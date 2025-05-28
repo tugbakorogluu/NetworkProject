@@ -30,7 +30,7 @@ Available commands:
 |  quit - Disconnect and quit the application
 """
 
-    def __init__(self, username, dest, port, window_size):
+    def __init__(self, username, dest, port, window_size, on_message=None):
         self.server_addr = dest
         self.server_port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -39,6 +39,7 @@ Available commands:
         self.name = username
         self.active = True
         self.seq_num = 0
+        self.on_message = on_message
 
     def start(self):
         '''
@@ -122,28 +123,31 @@ Available commands:
                     # split the message into parts
                     message_parts = message.split()
                     if len(message_parts) <= 2:
-                        # print message to server for unknown message
-                        print("ERROR: Received incorrectly formatted RESPONSE_USERS_LIST message.")
+                        self._show_message("ERROR: Received incorrectly formatted RESPONSE_USERS_LIST message.")
                         break
                     else:
                         # get the list of users
                         users = ' '.join(message_parts[2:])
-                        # print the list of users
-                        print(f"list: {users.replace(', ', ' ')}")
+                        self._show_message(f"list: {users.replace(', ', ' ')}")
                 else:
                     # split the message into parts
                     message_parts = message.split(' ', 2)
                     if len(message_parts) <= 2:
-                        # print message to server for unknown message
-                        print("ERROR: Received incorrectly formatted message.")
+                        self._show_message("ERROR: Received incorrectly formatted message.")
                         break
                     else:
                         _, _, content = message_parts
-                        # print the message
-                        print("msg: " + content)
+                        self._show_message("msg: " + content)
 
             except Exception as e:
                 break
+
+
+    def _show_message(self, message):
+        if self.on_message:
+            self.on_message(message)
+        else:
+            print(message)
 
 
     def join(self):
