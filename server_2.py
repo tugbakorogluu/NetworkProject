@@ -107,7 +107,9 @@ class Server:
                     del self.client_info[addr]
 
             if addr in self.client_info:
-                ack_msg = util.make_packet('ack', self.client_info[addr] + 1, '')
+                ack_seq_num = self.client_info[addr] + 1
+                ack_msg = util.make_packet('ack', ack_seq_num, '')
+                print(f"Sending ACK to {addr} with sequence number {ack_seq_num}")
                 self.sock.sendto(ack_msg.encode(), addr)
 
         except ValueError:
