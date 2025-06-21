@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import scrolledtext, simpledialog, messagebox
+from tkinter import scrolledtext, simpledialog, messagebox, font
 import threading
 import client_1
 import client_2
@@ -8,29 +8,76 @@ import queue
 class ChatGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("UDP Chat Client")
+        self.root.title("Chat Uygulaması")
+        self.root.configure(bg="#F0F0F0")
 
-        self.text_area = scrolledtext.ScrolledText(root, state='disabled', width=50, height=20)
-        self.text_area.pack(padx=10, pady=10)
+        # Fonts and Colors
+        self.default_font = font.nametofont("TkDefaultFont")
+        self.default_font.configure(family="Helvetica", size=10)
+        self.bold_font = font.Font(family="Helvetica", size=10, weight="bold")
+        
+        BG_COLOR = "#F0F0F0"
+        TEXT_COLOR = "#000000"
+        ENTRY_BG = "#FFFFFF"
+        BUTTON_BG = "#0078D4"
+        BUTTON_FG = "#FFFFFF"
+        USER_LIST_BG = "#FFFFFF"
 
-        # Kullanıcı listesi
-        self.user_listbox = tk.Listbox(root, selectmode=tk.MULTIPLE, exportselection=False, width=30, height=8)
-        self.user_listbox.pack(padx=10, pady=(0,10))
+        # --- Layout ---
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(1, weight=1)
 
-        self.refresh_button = tk.Button(root, text="Kullanıcıları Yenile", command=self.refresh_users)
-        self.refresh_button.pack(pady=(0,10))
+        # Left Frame (User List)
+        left_frame = tk.Frame(self.root, bg=BG_COLOR, padx=10, pady=10)
+        left_frame.grid(row=0, column=0, sticky="ns")
 
-        self.entry = tk.Entry(root, width=40)
-        self.entry.pack(side=tk.LEFT, padx=(10,0), pady=(0,10))
+        user_label = tk.Label(left_frame, text="Çevrimiçi Kullanıcılar", font=self.bold_font, bg=BG_COLOR)
+        user_label.pack(pady=(0, 5))
+
+        self.user_listbox = tk.Listbox(left_frame, selectmode=tk.MULTIPLE, exportselection=False, bg=USER_LIST_BG, width=30, height=20)
+        self.user_listbox.pack(fill=tk.BOTH, expand=True)
+
+        self.refresh_button = tk.Button(left_frame, text="Yenile", command=self.refresh_users, bg=BUTTON_BG, fg=BUTTON_FG, relief=tk.FLAT)
+        self.refresh_button.pack(pady=5, fill=tk.X)
+
+        # Right Frame (Chat Area)
+        right_frame = tk.Frame(self.root, bg=BG_COLOR)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        right_frame.grid_rowconfigure(0, weight=1)
+        right_frame.grid_columnconfigure(0, weight=1)
+
+        self.text_area = scrolledtext.ScrolledText(right_frame, state='disabled', wrap=tk.WORD, bg=ENTRY_BG, font=("Helvetica", 10))
+        self.text_area.grid(row=0, column=0, columnspan=2, sticky="nsew")
+
+        # --- Message Entry ---
+        entry_frame = tk.Frame(right_frame, bg=BG_COLOR)
+        entry_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        entry_frame.grid_columnconfigure(0, weight=1)
+
+        self.entry = tk.Entry(entry_frame, bg=ENTRY_BG, font=("Helvetica", 10))
+        self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         self.entry.bind("<Return>", self.send_message)
 
-        self.send_button = tk.Button(root, text="Gönder", command=self.send_message)
-        self.send_button.pack(side=tk.LEFT, padx=(5,10), pady=(0,10))
+        self.send_button = tk.Button(entry_frame, text="Gönder", command=self.send_message, bg=BUTTON_BG, fg=BUTTON_FG, relief=tk.FLAT)
+        self.send_button.grid(row=0, column=1)
 
+        # --- Tag Configurations for Text Area ---
+        self.text_area.tag_configure('me', foreground="#0078D4", font=self.bold_font)
+        self.text_area.tag_configure('other', foreground="#000000", font=self.bold_font)
+        self.text_area.tag_configure('message', foreground="#333333")
+        self.text_area.tag_configure('system', foreground="#666666", font=("Helvetica", 9, "italic"))
+
+        # --- Initialization ---
         self.client = None
         self.username = simpledialog.askstring("Kullanıcı Adı", "Kullanıcı adınızı girin:")
+        if not self.username:
+            self.root.destroy()
+            return
+
+        self.root.title(f"Chat Uygulaması - {self.username}")
+            
         self.port = simpledialog.askinteger("Port", "Sunucu portunu girin:", initialvalue=5000)
-        self.server_choice = simpledialog.askinteger("Sunucu Seçimi", "Lütfen sunucu seçin (1 veya 2):", minvalue=1, maxvalue=2)
+        self.server_choice = simpledialog.askinteger("Sunucu Seçimi", "Lütfen sunucu seçin:\n1: Basit Sunucu (UDP)\n2: Güvenilir Sunucu (UDP+ACK)", minvalue=1, maxvalue=2)
         
         self.msg_queue = queue.Queue()
         self.user_list = []
@@ -41,33 +88,25 @@ class ChatGUI:
             self.root.destroy()
 
     def connect_to_server(self):
-        if self.server_choice == 1:
-            self.client = client_1.Client(self.username, "localhost", self.port, 3, on_message=self.display_message)
-        elif self.server_choice == 2:
-            self.client = client_2.Client(self.username, "localhost", self.port, 3, on_message=self.display_message)
+        ClientClass = client_1.Client if self.server_choice == 1 else client_2.Client
+        self.client = ClientClass(self.username, "localhost", self.port, 3, on_message=self.display_message)
         
-        if self.client:
-            threading.Thread(target=self.client.start, daemon=True).start()
-            self.root.after(500, self.refresh_users)  # Otomatik ilk kullanıcı listesini al
-        else:
-            messagebox.showerror("Hata", "Geçersiz sunucu seçimi.")
-            self.root.destroy()
+        threading.Thread(target=self.client.start, daemon=True).start()
+        self.display_message(f"Sunucu {self.server_choice}'e bağlanılıyor...", 'system')
+        self.root.after(500, self.refresh_users)
 
     def send_message(self, event=None):
         msg = self.entry.get()
         if msg:
             selected_indices = self.user_listbox.curselection()
             
-            # If no user is selected, treat it as a broadcast message to all users.
-            # Otherwise, send a private message to the selected users.
             if not selected_indices:
                 selected_users = ['all']
-                display_text = f"msg: {self.username} (to All): {msg}"
+                display_text = f"msg:{self.username} (Herkese):{msg}"
             else:
                 selected_users = [self.user_listbox.get(i) for i in selected_indices]
-                display_text = f"msg: {self.username}: {msg}"
+                display_text = f"msg:{self.username} (Özel):{msg}"
 
-            # Display the sent message in the user's own chat window
             self.msg_queue.put(display_text)
             
             user_count = len(selected_users)
@@ -76,31 +115,58 @@ class ChatGUI:
             self.client.msg(full_msg)
             self.entry.delete(0, tk.END)
 
-    def display_message(self, message):
-        # Kullanıcı listesini güncelle
+    def display_message(self, message, tag_override=None):
+        if tag_override:
+            self.text_area.config(state='normal')
+            self.text_area.insert(tk.END, message + "\n", tag_override)
+            self.text_area.config(state='disabled')
+            self.text_area.see(tk.END)
+            return
+
         if message.startswith("list: "):
             users = message[6:].strip().split()
-            self.user_list = [u for u in users if u != self.username]  # Kendini listeden çıkar
+            self.user_list = sorted([u for u in users if u != self.username])
             self.update_user_listbox()
-        # Mesajı ekrana yaz
-        self.msg_queue.put(message)
+        elif message.startswith("msg:"):
+            try:
+                _, sender, content = message.split(':', 2)
+                self.text_area.config(state='normal')
+                if sender.startswith(self.username): # Handles "(Herkese)" or "(Özel)"
+                    context = ""
+                    if "(Herkese)" in sender:
+                        context = " (Herkese)"
+                    elif "(Özel)" in sender:
+                        context = " (Özel)"
+                    self.text_area.insert(tk.END, f"Siz{context}: ", 'me')
+                else:
+                    self.text_area.insert(tk.END, f"{sender}: ", 'other')
+                self.text_area.insert(tk.END, f"{content}\n", 'message')
+                self.text_area.config(state='disabled')
+                self.text_area.see(tk.END)
+            except ValueError:
+                 self.display_message(f"Alınan mesaj formatı bozuk: {message}", 'system')
+        else:
+            self.display_message(message, 'system')
 
     def check_messages(self):
         while not self.msg_queue.empty():
             message = self.msg_queue.get()
-            self.text_area.config(state='normal')
-            self.text_area.insert(tk.END, message + "\n")
-            self.text_area.config(state='disabled')
-            self.text_area.see(tk.END)
+            self.display_message(message)
         self.root.after(100, self.check_messages)
 
     def refresh_users(self):
+        self.display_message("Kullanıcı listesi yenileniyor...", 'system')
         self.client.list()
 
     def update_user_listbox(self):
+        current_selection = self.user_listbox.curselection()
         self.user_listbox.delete(0, tk.END)
         for user in self.user_list:
             self.user_listbox.insert(tk.END, user)
+        # Restore selection
+        for i in current_selection:
+            if self.user_listbox.get(i) in self.user_list:
+                self.user_listbox.select_set(i)
 
 if __name__ == "__main__":
     root = tk.Tk()
