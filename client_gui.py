@@ -60,6 +60,11 @@ class ChatGUI:
             if not selected_indices:
                 messagebox.showwarning("Uyarı", "Lütfen en az bir kullanıcı seçin!")
                 return
+
+            # Display the sent message in the user's own chat window
+            display_text = f"msg: {self.username}: {msg}"
+            self.msg_queue.put(display_text)
+            
             selected_users = [self.user_listbox.get(i) for i in selected_indices]
             user_count = len(selected_users)
             user_str = ','.join(selected_users)
