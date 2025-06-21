@@ -117,7 +117,10 @@ Available commands:
             try:
                 # receive data from the server
                 data, _ = self.sock.recvfrom(1024)  
-                _, _, message, _ = util.parse_packet(data.decode())
+                packet_type, _, message, _ = util.parse_packet(data.decode())
+
+                if packet_type == 'ack':
+                    continue
 
                 self.error_handler(message)
 
@@ -166,6 +169,7 @@ Available commands:
         join_message = util.make_message("join", 1, self.name)
         join_packet = util.make_packet("data", self.seq_num, join_message)
         self.sock.sendto(join_packet.encode(), (self.server_addr, self.server_port))
+        self.seq_num += 1
         return
 
 
@@ -209,6 +213,7 @@ Available commands:
         list_message = util.make_message("request_users_list", 2)
         list_message_packet = util.make_packet("data", self.seq_num, list_message)
         self.sock.sendto(list_message_packet.encode(), (self.server_addr, self.server_port))
+        self.seq_num += 1
         return
 
 
