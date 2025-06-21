@@ -76,12 +76,13 @@ class ChatGUI:
 
         self.root.title(f"Chat Uygulaması - {self.username}")
             
+        self.server_addr = simpledialog.askstring("Sunucu Adresi", "Sunucu adresini girin:", initialvalue="localhost")
         self.port = simpledialog.askinteger("Port", "Sunucu portunu girin:", initialvalue=5000)
         self.server_choice = simpledialog.askinteger("Sunucu Seçimi", "Lütfen sunucu seçin:\n1: Basit Sunucu (UDP)\n2: Güvenilir Sunucu (UDP+ACK)", minvalue=1, maxvalue=2)
         
         self.msg_queue = queue.Queue()
         self.user_list = []
-        if self.username and self.port and self.server_choice:
+        if self.username and self.server_addr and self.port and self.server_choice:
             self.connect_to_server()
             self.root.after(100, self.check_messages)
         else:
@@ -89,7 +90,7 @@ class ChatGUI:
 
     def connect_to_server(self):
         ClientClass = client_1.Client if self.server_choice == 1 else client_2.Client
-        self.client = ClientClass(self.username, "localhost", self.port, 3, on_message=self.display_message)
+        self.client = ClientClass(self.username, self.server_addr, self.port, 3, on_message=self.display_message)
         
         threading.Thread(target=self.client.start, daemon=True).start()
         self.display_message(f"Sunucu {self.server_choice}'e bağlanılıyor...", 'system')
