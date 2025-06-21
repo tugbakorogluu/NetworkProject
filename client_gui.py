@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import scrolledtext, simpledialog, messagebox
 import threading
 import client_1
+import client_2
 import queue
 
 class ChatGUI:
@@ -29,15 +30,28 @@ class ChatGUI:
         self.client = None
         self.username = simpledialog.askstring("Kullanıcı Adı", "Kullanıcı adınızı girin:")
         self.port = simpledialog.askinteger("Port", "Sunucu portunu girin:", initialvalue=5000)
+        self.server_choice = simpledialog.askinteger("Sunucu Seçimi", "Lütfen sunucu seçin (1 veya 2):", minvalue=1, maxvalue=2)
+        
         self.msg_queue = queue.Queue()
         self.user_list = []
-        self.connect_to_server()
-        self.root.after(100, self.check_messages)
+        if self.username and self.port and self.server_choice:
+            self.connect_to_server()
+            self.root.after(100, self.check_messages)
+        else:
+            self.root.destroy()
 
     def connect_to_server(self):
-        self.client = client_1.Client(self.username, "localhost", self.port, 3, on_message=self.display_message)
-        threading.Thread(target=self.client.start, daemon=True).start()
-        self.root.after(500, self.refresh_users)  # Otomatik ilk kullanıcı listesini al
+        if self.server_choice == 1:
+            self.client = client_1.Client(self.username, "localhost", self.port, 3, on_message=self.display_message)
+        elif self.server_choice == 2:
+            self.client = client_2.Client(self.username, "localhost", self.port, 3, on_message=self.display_message)
+        
+        if self.client:
+            threading.Thread(target=self.client.start, daemon=True).start()
+            self.root.after(500, self.refresh_users)  # Otomatik ilk kullanıcı listesini al
+        else:
+            messagebox.showerror("Hata", "Geçersiz sunucu seçimi.")
+            self.root.destroy()
 
     def send_message(self, event=None):
         msg = self.entry.get()

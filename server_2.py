@@ -19,110 +19,101 @@ class Server:
         self.sock.settimeout(None)
         self.sock.bind((self.server_addr, self.server_port))
         self.clients = {}
+        self.client_info = {}
 
     def start(self):
         '''
         Main loop.
         continue receiving messages from Clients and processing it
         '''
-        while True:
-            data, addr = self.sock.recvfrom(1024)
-            self.process_packet(data, addr)
+        try:
+            while True:
+                data, addr = self.sock.recvfrom(1024)
+                self.process_packet(data, addr)
+        except KeyboardInterrupt:
+            self.sock.close()
         
     def process_packet(self, data, addr):
         try:
-            packet_type, seq_num, message, received_checksum = util.parse_packet(data.decode())
-            calculated_checksum = util.validate_checksum(message)
+            decoded_data = data.decode()
+            body, received_checksum = decoded_data.rsplit('|', 1)
+            body_with_pipe = body + '|'
+            
+            calculated_checksum = util.generate_checksum(body_with_pipe.encode())
+
             if received_checksum != calculated_checksum:
                 print(f"Checksum mismatch, packet from {addr} ignored.")
                 return
+            
+            packet_type, seq_num_str, message, _ = util.parse_packet(decoded_data)
+            seq_num = int(seq_num_str)
 
             # process the message
             if packet_type == "start":
                 self.client_info[addr] = seq_num
                 print(f"Connection initiated from {addr}.")
-            elif type == 'data':
+            elif packet_type == "data":
+                if addr not in self.client_info:
+                    self.client_info[addr] = -1
+
                 expected_seq = self.client_info[addr] + 1
                 if seq_num == expected_seq:
-                    print(f"Data received from {addr}: {message}")
-                    self.client_info[addr] += 1
+                    self.client_info[addr] = seq_num
+                    
+                    message_parts = message.split()
+                    command = message_parts[0]
+
+                    if command == "join":
+                        username = message_parts[2]  
+                        self.join(username, addr)
+
+                    elif command == "request_users_list":
+                        if addr not in self.clients:
+                            print("Error: Address not recognized")
+                        else:
+                            self.request_users_list(self.clients[addr], addr)
+
+                    elif command == "send_message":
+                        try:
+                            num_active_users = int(message_parts[3])
+                            active_users = message_parts[4:4 + num_active_users]
+                            text = ' '.join(message_parts[4 + num_active_users:])
+                            sender = self.clients.get(addr, "Unknown")
+                            forward_message_content = f"{sender}: {text}"
+                            forward_message = util.make_message('msg', 4, forward_message_content)
+                            print(f"msg: {sender}")
+                            self.send_message(sender, active_users, forward_message)
+                        except (IndexError, ValueError):
+                            pass
+
+                    elif command == "disconnect":
+                        try:
+                            username = message_parts[2]
+                            if addr in self.clients:
+                                del self.clients[addr]
+                                print(f"disconnected: {username}")
+                            else:
+                                print(f"disconnect attempted by non-existent or already disconnected user: {username}")
+                        except IndexError:
+                            pass
+                    else:
+                        self.err_unknown_message(addr)
                 else:
                     print(f"Unexpected sequence number from {addr}. Expected: {expected_seq}, got: {seq_num}")
-                # split the message into parts
-                message_parts = message.split()
-                # get the command
-                command = message_parts[0]
-
-                if command == "join":
-                    # get the username
-                    username = message_parts[2]  
-                    self.join(username, addr)
-
-                elif command == "request_users_list":
-                    # check if the address is in the clients dictionary
-                    if addr not in self.clients:
-                        # send error message to the server
-                        print("Error: Address not recognized")
-                    else:
-                        # request the list of active users
-                        self.request_users_list(self.clients[addr], addr)
-
-                elif command == "send_message":
-                    try:
-                        # get the number of active users
-                        num_active_users = int(message_parts[3])
-                        # get the list of active users
-                        active_users = message_parts[4:4 + num_active_users]
-                        # get the message text
-                        text = ' '.join(message_parts[4 + num_active_users:])
-                        # get the sender
-                        sender = self.clients.get(addr, "Unknown")
-                        # create the forward message
-                        forward_message_content = f"{sender}: {text}"
-                        forward_message = util.make_message('msg', 4, forward_message_content)
-                        # print the message to the server
-                        print(f"msg: {sender}")
-                        # forward the message to the active users
-                        self.send_message(sender, active_users, forward_message)
-
-                    except IndexError:
-                        # handle index error
-                        pass
-                    except ValueError:
-                        # handle value error
-                        pass
-
-                elif command == "disconnect":
-                    try:
-                        # get the username
-                        username = message_parts[2]
-                        # check if the address is in the clients dictionary
-                        if addr in self.clients:
-                            # delete the client from the clients dictionary
-                            del self.clients[addr]
-                            # print the disconnect message to the server
-                            print(f"disconnected: {username}")
-                        else:
-                            # print the error message to the server
-                            print(f"disconnect attempted by non-existent or already disconnected user: {username}")
-                    except IndexError:
-                        # handle index error
-                        pass
-                else:
-                    # handle unknown message
-                    self.err_unknown_message(addr)
+                
             elif packet_type == "end":
                 print(f"Connection closed from {addr}.")
-                del self.client_info[addr]
+                if addr in self.client_info:
+                    del self.client_info[addr]
 
-            # Sending ACK
-            ack_msg = util.make_packet('ack', self.client_info[addr] + 1, '', calculated_checksum)
-            self.sock.sendto(ack_msg.encode(), addr)
+            if addr in self.client_info:
+                ack_msg = util.make_packet('ack', self.client_info[addr] + 1, '')
+                self.sock.sendto(ack_msg.encode(), addr)
 
-        except KeyboardInterrupt:
-            self.sock.close()
+        except ValueError:
+            print(f"Error processing packet from {addr}: Malformed packet")
         except Exception as e:
-            self.sock.close()
+            print(f"An unexpected error occurred while processing packet from {addr}: {e}")
 
 
     def join(self, username, addr):
