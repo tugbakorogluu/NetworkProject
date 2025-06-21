@@ -10,6 +10,9 @@ import os
 import util
 import time
 
+# Constants for retransmission logic
+RETRY_TIMEOUT = 0.5  # 500ms
+MAX_RETRIES = 5
 
 class Client:
     # Define a global variable for the available commands
@@ -56,8 +59,10 @@ Available commands:
         # send join message to server
         self.join()
 
-        # start a new thread to handle incoming messages
+        # start new threads to handle incoming messages and retransmissions
         Thread(target=self.receive_handler, daemon=True).start()
+        Thread(target=self.retransmission_handler, daemon=True).start()
+        
         try:
             while self.active:
                 command = input()
@@ -117,9 +122,14 @@ Available commands:
             try:
                 # receive data from the server
                 data, _ = self.sock.recvfrom(1024)  
-                packet_type, _, message, _ = util.parse_packet(data.decode())
+                packet_type, seq_num_str, message, _ = util.parse_packet(data.decode())
 
                 if packet_type == 'ack':
+                    ack_seq_num = int(seq_num_str)
+                    acked_packet_seq = ack_seq_num - 1
+                    with self.pending_packets_lock:
+                        if acked_packet_seq in self.pending_packets:
+                            del self.pending_packets[acked_packet_seq]
                     continue
 
                 self.error_handler(message)
@@ -162,13 +172,22 @@ Available commands:
             print(message)
 
 
+    def _send_reliable_packet(self, packet):
+        """Helper function to send a packet and add it to the pending list."""
+        with self.pending_packets_lock:
+            seq_num_str, _ = packet.split('|', 2)[1:3]
+            seq_num = int(seq_num_str)
+            self.pending_packets[seq_num] = (packet, time.time(), 0) # packet, sent_time, retry_count
+        self.sock.sendto(packet.encode(), (self.server_addr, self.server_port))
+
+
     def join(self):
         '''
         Send a JOIN message to the server
         '''
         join_message = util.make_message("join", 1, self.name)
         join_packet = util.make_packet("data", self.seq_num, join_message)
-        self.sock.sendto(join_packet.encode(), (self.server_addr, self.server_port))
+        self._send_reliable_packet(join_packet)
         self.seq_num += 1
         return
 
@@ -179,7 +198,7 @@ Available commands:
         '''
         disconnect_message = util.make_message("disconnect", 1, self.name)
         disconnect_message_packet = util.make_packet("data", self.seq_num, disconnect_message)
-        self.sock.sendto(disconnect_message_packet.encode(), (self.server_addr, self.server_port))
+        self._send_reliable_packet(disconnect_message_packet)
         self.active = False
         print("quitting")
         return
@@ -197,7 +216,7 @@ Available commands:
             user_message_part = f"{num_users} " + " ".join(users) + " " + text
             user_msg_message = util.make_message('send_message', 4, user_message_part)
             message_packet = util.make_packet("data", self.seq_num, user_msg_message)
-            self.sock.sendto(message_packet.encode(), (self.server_addr, self.server_port))
+            self._send_reliable_packet(message_packet)
             self.seq_num += 1
             return
         except (ValueError, IndexError):
@@ -212,9 +231,37 @@ Available commands:
         # send request to server for list of users
         list_message = util.make_message("request_users_list", 2)
         list_message_packet = util.make_packet("data", self.seq_num, list_message)
-        self.sock.sendto(list_message_packet.encode(), (self.server_addr, self.server_port))
+        self._send_reliable_packet(list_message_packet)
         self.seq_num += 1
         return
+
+    def retransmission_handler(self):
+        """
+        Periodically checks for packets that have not been acknowledged and retransmits them.
+        """
+        while self.active:
+            time.sleep(RETRY_TIMEOUT)
+            
+            with self.pending_packets_lock:
+                current_time = time.time()
+                # Iterate over a copy of items, as we might modify the dict
+                for seq_num, (packet, sent_time, retry_count) in list(self.pending_packets.items()):
+                    if current_time - sent_time > RETRY_TIMEOUT:
+                        if retry_count >= MAX_RETRIES:
+                            # Too many retries, server is likely down
+                            self._show_message("Server not responding. Disconnecting.")
+                            self.active = False
+                            # No need to remove from dict, the client will shut down
+                            break
+                        else:
+                            # Retransmit
+                            self._show_message(f"Timeout for packet {seq_num}. Retrying... ({retry_count + 1})")
+                            self.sock.sendto(packet.encode(), (self.server_addr, self.server_port))
+                            # Update the packet's info in the dict
+                            self.pending_packets[seq_num] = (packet, current_time, retry_count + 1)
+            if not self.active:
+                self.sock.close()
+                break
 
 
 if __name__ == "__main__":
