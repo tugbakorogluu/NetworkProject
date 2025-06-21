@@ -54,27 +54,23 @@ class Server:
 
                     elif command == "send_message":
                         try:
-                            # get the number of active users
-                            num_active_users = int(message_parts[3])
-                            # get the list of active users
-                            active_users = message_parts[4:4 + num_active_users]
-                            # get the message text
-                            text = ' '.join(message_parts[4 + num_active_users:])
-                            # get the sender
-                            sender = self.clients.get(addr, "Unknown")
-                            # create the forward message
-                            forward_message_content = f"{sender}: {text}"
+                            num_recipients = int(message_parts[3])
+                            recipients = message_parts[4:4 + num_recipients]
+                            text = ' '.join(message_parts[4 + num_recipients:])
+                            sender_username = self.clients.get(addr, "Unknown")
+                            
+                            forward_message_content = f"{sender_username}: {text}"
                             forward_message = util.make_message('msg', 4, forward_message_content)
-                            # print the message to the server
-                            print(f"msg: {sender}")
-                            # forward the message to the active users
-                            self.send_message(sender, active_users, forward_message)
+                            
+                            if len(recipients) == 1 and recipients[0] == 'all':
+                                print(f"msg: {sender_username} to all")
+                                broadcast_list = [username for client_addr, username in self.clients.items() if client_addr != addr]
+                                self.send_message(sender_username, broadcast_list, forward_message)
+                            else:
+                                print(f"msg: {sender_username} to {', '.join(recipients)}")
+                                self.send_message(sender_username, recipients, forward_message)
 
-                        except IndexError:
-                            # handle index error
-                            pass
-                        except ValueError:
-                           # handle value error
+                        except (IndexError, ValueError):
                            pass
 
                     elif command == "disconnect":

@@ -57,15 +57,19 @@ class ChatGUI:
         msg = self.entry.get()
         if msg:
             selected_indices = self.user_listbox.curselection()
+            
+            # If no user is selected, treat it as a broadcast message to all users.
+            # Otherwise, send a private message to the selected users.
             if not selected_indices:
-                messagebox.showwarning("Uyarı", "Lütfen en az bir kullanıcı seçin!")
-                return
+                selected_users = ['all']
+                display_text = f"msg: {self.username} (to All): {msg}"
+            else:
+                selected_users = [self.user_listbox.get(i) for i in selected_indices]
+                display_text = f"msg: {self.username}: {msg}"
 
             # Display the sent message in the user's own chat window
-            display_text = f"msg: {self.username}: {msg}"
             self.msg_queue.put(display_text)
             
-            selected_users = [self.user_listbox.get(i) for i in selected_indices]
             user_count = len(selected_users)
             user_str = ','.join(selected_users)
             full_msg = f"msg {user_count} {user_str} {msg}"

@@ -75,14 +75,21 @@ class Server:
 
                     elif command == "send_message":
                         try:
-                            num_active_users = int(message_parts[3])
-                            active_users = message_parts[4:4 + num_active_users]
-                            text = ' '.join(message_parts[4 + num_active_users:])
-                            sender = self.clients.get(addr, "Unknown")
-                            forward_message_content = f"{sender}: {text}"
+                            num_recipients = int(message_parts[3])
+                            recipients = message_parts[4:4 + num_recipients]
+                            text = ' '.join(message_parts[4 + num_recipients:])
+                            sender_username = self.clients.get(addr, "Unknown")
+                            
+                            forward_message_content = f"{sender_username}: {text}"
                             forward_message = util.make_message('msg', 4, forward_message_content)
-                            print(f"msg: {sender}")
-                            self.send_message(sender, active_users, forward_message)
+
+                            if len(recipients) == 1 and recipients[0] == 'all':
+                                print(f"msg: {sender_username} to all")
+                                broadcast_list = [username for client_addr, username in self.clients.items() if client_addr != addr]
+                                self.send_message(sender_username, broadcast_list, forward_message)
+                            else:
+                                print(f"msg: {sender_username} to {', '.join(recipients)}")
+                                self.send_message(sender_username, recipients, forward_message)
                         except (IndexError, ValueError):
                             pass
 
