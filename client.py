@@ -160,12 +160,11 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
                 data, _ = self.sock.recvfrom(1024)  
                 packet_type, seq_num_str, message, _ = util.parse_packet(data.decode())
 
-                # Record received message for performance monitoring
-                self.perf_monitor.record_message_received(int(seq_num_str), len(data), receive_time)
-
                 if packet_type == 'ack':
                     ack_seq_num = int(seq_num_str)
                     acked_packet_seq = ack_seq_num - 1
+                    # Sadece ACK paketleri için performance monitor'e bildir
+                    self.perf_monitor.record_message_received(acked_packet_seq, len(data), receive_time)
                     with self.pending_packets_lock:
                         if acked_packet_seq in self.pending_packets:
                             del self.pending_packets[acked_packet_seq]

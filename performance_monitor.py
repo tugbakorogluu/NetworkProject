@@ -49,23 +49,22 @@ class PerformanceMonitor:
         """Gönderilen mesaj bilgilerini kaydet"""
         if timestamp is None:
             timestamp = time.time()
-            
         with self.lock:
             self.total_messages_sent += 1
             self.total_bytes_sent += message_size
             self.message_timestamps.append(timestamp)
             self.packet_sizes.append(message_size)
             self.pending_messages[seq_num] = timestamp
+            print(f"[PERF-LOG] SENT: seq_num={seq_num}, size={message_size}, total_sent={self.total_messages_sent}")
 
     def record_message_received(self, seq_num, message_size, timestamp=None):
         """Alınan mesaj bilgilerini kaydet ve latency hesapla"""
         if timestamp is None:
             timestamp = time.time()
-            
         with self.lock:
             self.total_messages_received += 1
             self.total_bytes_received += message_size
-            
+            print(f"[PERF-LOG] RECEIVED: seq_num={seq_num}, size={message_size}, total_received={self.total_messages_received}")
             # Latency hesapla
             if seq_num in self.pending_messages:
                 sent_time = self.pending_messages[seq_num]
@@ -84,7 +83,7 @@ class PerformanceMonitor:
         with self.lock:
             current_time = time.time()
             session_duration = current_time - self.session_start_time
-            
+            print(f"[PERF-LOG] get_current_stats: sent={self.total_messages_sent}, received={self.total_messages_received}, retransmissions={self.total_retransmissions}")
             # Temel istatistikler
             stats = {
                 'session_duration': session_duration,
@@ -109,7 +108,8 @@ class PerformanceMonitor:
             stats.update({
                 'messages_per_second': self._calculate_message_throughput(),
                 'bytes_per_second': self._calculate_byte_throughput(),
-                'packet_loss_rate': self._calculate_packet_loss_rate()
+                'packet_loss_rate': self._calculate_packet_loss_rate(),
+                'retransmission_rate': self._calculate_retransmission_rate()
             })
             
             # Ortalama paket boyutu
@@ -149,10 +149,16 @@ class PerformanceMonitor:
         return 0
 
     def _calculate_packet_loss_rate(self):
-        """Paket kaybı oranı hesaplama"""
+        """Gönderilen ve alınan paket farkına göre kayıp oranı"""
         if self.total_messages_sent == 0:
             return 0
-        
+        lost_packets = max(self.total_messages_sent - self.total_messages_received, 0)
+        return (lost_packets / self.total_messages_sent) * 100
+
+    def _calculate_retransmission_rate(self):
+        """Yeniden gönderim oranı (her gönderilen mesaja oranla toplam retransmission sayısı)"""
+        if self.total_messages_sent == 0:
+            return 0
         return (self.total_retransmissions / self.total_messages_sent) * 100
 
     def _periodic_stats_collection(self):
@@ -210,6 +216,7 @@ MESAJ İSTATİSTİKLERİ:
 - Gönderilen: {stats['total_messages_sent']}
 - Alınan: {stats['total_messages_received']}
 - Yeniden gönderim: {stats['total_retransmissions']}
+- Yeniden gönderim oranı: {stats['retransmission_rate']:.2f}%
 
 LATENCY (GECİKME):
 - Ortalama: {stats.get('avg_latency_ms', 0):.2f} ms
