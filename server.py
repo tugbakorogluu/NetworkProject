@@ -77,9 +77,9 @@ class Server:
 
                     elif command == "send_message":
                         try:
-                            num_recipients = int(message_parts[3])
-                            recipients = message_parts[4:4 + num_recipients]
-                            text = ' '.join(message_parts[4 + num_recipients:])
+                            num_recipients = int(message_parts[2])
+                            recipients = message_parts[3:3 + num_recipients]
+                            text = ' '.join(message_parts[3 + num_recipients:])
                             sender_username = self.clients.get(addr, "Unknown")
                             
                             forward_message_content = f"{sender_username}: {text}"
@@ -139,7 +139,7 @@ class Server:
             print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
             self.sock.sendto(packet_to_send.encode(), addr)
             # print disonnect message to server
-            print("disconnected: server full")
+            
         elif username in self.clients.values():
             # send error message to the client if username is already taken
             error_message = util.make_message("ERR_USERNAME_UNAVAILABLE", 2)
@@ -147,12 +147,12 @@ class Server:
             print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
             self.sock.sendto(packet_to_send.encode(), addr)
             # print disonnect message to server
-            print("disconnected: username not available")
+            
         else:
             # add the client to the clients dictionary
             self.clients[addr] = username
             # send successful join message to the client
-            print(f"join: {username}")
+            print(f"LOG: join: {username}")
 
     
     def request_users_list(self, username, addr):
@@ -167,7 +167,7 @@ class Server:
         print(f"LOG: Gönderiliyor {addr}: {response_packet}")
         self.sock.sendto(response_packet.encode(), addr)
         # print the request_users_list message to the server
-        print(f"request_users_list: {username}")
+        print(f"LOG: request_users_list: {username}")
 
     
     def send_message(self, sender, active_users, message):
@@ -202,7 +202,7 @@ class Server:
             # delete the client from the clients dictionary
             del self.clients[addr]
             # print the disconnect message to the server
-            print("disconnected: server received an unknown message")
+            print("LOG: disconnected: server received an unknown message")
 
 
 if __name__ == "__main__":

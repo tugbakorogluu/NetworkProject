@@ -209,11 +209,19 @@ Available commands:
         Send a message to the server
         '''
         try:
-            parts = message.split(' ', 1)
-            user_list, text = parts[1].split(' ', 1)
-            users = user_list.split(',')
-            num_users = len(users)
-            user_message_part = f"{num_users} " + " ".join(users) + " " + text
+            # message format from GUI: "msg <user_count> <user_str_comma_sep> <text>"
+            # e.g., "msg 2 atakan,tuba some message"
+            _, user_count_str, user_str_comma_sep, text = message.split(' ', 3)
+            
+            # The server expects a space-separated user list.
+            # No need to re-parse the comma-separated string if the GUI already provides the count.
+            # Let's trust the user_count from the GUI.
+            # The server parser splits by space, so we need to ensure the user list is space-separated.
+            users_space_sep = user_str_comma_sep.replace(',', ' ')
+
+            # Format for util.make_message: "<num_users> <user1> <user2> ... <message>"
+            user_message_part = f"{user_count_str} {users_space_sep} {text}"
+
             user_msg_message = util.make_message('send_message', 4, user_message_part)
             message_packet = util.make_packet("data", self.seq_num, user_msg_message)
             self._send_reliable_packet(message_packet)
