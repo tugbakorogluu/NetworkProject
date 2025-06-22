@@ -9,7 +9,7 @@ import util
 
 class Server:
     '''
-    This is the main Server Class. You will  write Server code inside this class.
+    This is the main Server Class. 
     '''
     def __init__(self, dest, port, window):
         self.server_addr = dest
@@ -19,6 +19,7 @@ class Server:
         self.sock.settimeout(None)
         self.sock.bind((self.server_addr, self.server_port))
         self.clients = {}
+        self.client_info = {}
 
     def start(self):
         '''
@@ -27,29 +28,51 @@ class Server:
         '''
         try:
             while True:
-                # receive data from client
-                data, addr = self.sock.recvfrom(1024) 
-                # parse the packet
-                type, seq_no, message, _ = util.parse_packet(data.decode())
-                # process the message
-                if type == 'data':
-                    # split the message into parts
+                data, addr = self.sock.recvfrom(1024)
+                print(f"LOG: Ham paket alındı {addr}: {data}")
+                self.process_packet(data, addr)
+        except KeyboardInterrupt:
+            self.sock.close()
+        
+    def process_packet(self, data, addr):
+        try:
+            decoded_data = data.decode()
+            body, received_checksum = decoded_data.rsplit('|', 1)
+            body_with_pipe = body + '|'
+            
+            calculated_checksum = util.generate_checksum(body_with_pipe.encode())
+
+            if received_checksum != calculated_checksum:
+                print(f"LOG: Checksum uyuşmuyor, {addr} adresinden gelen paket yoksayıldı.")
+                return
+            
+            packet_type, seq_num_str, message, _ = util.parse_packet(decoded_data)
+            print(f"LOG: Paket çözümlendi: tip={packet_type}, sıra_no={seq_num_str}, mesaj='{message}'")
+            seq_num = int(seq_num_str)
+
+            # process the message
+            if packet_type == "start":
+                self.client_info[addr] = seq_num
+                print(f"LOG: Bağlantı başlatıldı: {addr}.")
+            elif packet_type == "data":
+                if addr not in self.client_info:
+                    self.client_info[addr] = -1
+
+                expected_seq = self.client_info[addr] + 1
+                if seq_num == expected_seq:
+                    self.client_info[addr] = seq_num
+                    
                     message_parts = message.split()
-                    # get the command
                     command = message_parts[0]
 
                     if command == "join":
-                        # get the username
                         username = message_parts[2]  
                         self.join(username, addr)
 
                     elif command == "request_users_list":
-                        # check if the address is in the clients dictionary
                         if addr not in self.clients:
-                            # send error message to the server
                             print("Error: Address not recognized")
                         else:
-                            # request the list of active users
                             self.request_users_list(self.clients[addr], addr)
 
                     elif command == "send_message":
@@ -61,43 +84,47 @@ class Server:
                             
                             forward_message_content = f"{sender_username}: {text}"
                             forward_message = util.make_message('msg', 4, forward_message_content)
-                            
+
                             if len(recipients) == 1 and recipients[0] == 'all':
-                                print(f"msg: {sender_username} to all")
+                                print(f"LOG: msj: {sender_username} -> tümü")
                                 broadcast_list = [username for client_addr, username in self.clients.items() if client_addr != addr]
                                 self.send_message(sender_username, broadcast_list, forward_message)
                             else:
-                                print(f"msg: {sender_username} to {', '.join(recipients)}")
+                                print(f"LOG: msj: {sender_username} -> {', '.join(recipients)}")
                                 self.send_message(sender_username, recipients, forward_message)
-
                         except (IndexError, ValueError):
-                           pass
+                            pass
 
                     elif command == "disconnect":
                         try:
-                            # get the username
                             username = message_parts[2]
-                            # check if the address is in the clients dictionary
                             if addr in self.clients:
-                                # delete the client from the clients dictionary
                                 del self.clients[addr]
-                                # print the disconnect message to the server
-                                print(f"disconnected: {username}")
+                                print(f"LOG: bağlantı kesildi: {username}")
                             else:
-                                # print the error message to the server
-                                print(f"disconnect attempted by non-existent or already disconnected user: {username}")
+                                print(f"LOG: Var olmayan veya zaten bağlantısı kesilmiş kullanıcı tarafından bağlantı kesme denemesi: {username}")
                         except IndexError:
-                            # handle index error
                             pass
                     else:
-                        # handle unknown message
                         self.err_unknown_message(addr)
+                else:
+                    print(f"LOG: {addr} adresinden beklenmeyen sıra numarası. Beklenen: {expected_seq}, gelen: {seq_num}")
+                
+            elif packet_type == "end":
+                print(f"LOG: Bağlantı kapatıldı: {addr}.")
+                if addr in self.client_info:
+                    del self.client_info[addr]
 
+            if addr in self.client_info:
+                ack_seq_num = self.client_info[addr] + 1
+                ack_packet = util.make_packet('ack', ack_seq_num, '')
+                print(f"LOG: Gelen pakete karşılık {addr} adresine ACK gönderildi: {ack_packet}")
+                self.sock.sendto(ack_packet.encode(), addr)
 
-        except KeyboardInterrupt:
-            self.sock.close()
+        except ValueError:
+            print(f"LOG: {addr} adresinden gelen paket işlenirken hata: Hatalı biçimlendirilmiş paket")
         except Exception as e:
-            self.sock.close()
+            print(f"LOG: {addr} adresinden gelen paket işlenirken beklenmeyen bir hata oluştu: {e}")
 
 
     def join(self, username, addr):
@@ -108,13 +135,17 @@ class Server:
         if len(self.clients) >= util.MAX_NUM_CLIENTS:
             # send error message to the client
             error_message = util.make_message("ERR_SERVER_FULL", 2)
-            self.sock.sendto(util.make_packet("data", 0, error_message).encode(), addr)
+            packet_to_send = util.make_packet("data", 0, error_message)
+            print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
+            self.sock.sendto(packet_to_send.encode(), addr)
             # print disonnect message to server
             print("disconnected: server full")
         elif username in self.clients.values():
             # send error message to the client if username is already taken
             error_message = util.make_message("ERR_USERNAME_UNAVAILABLE", 2)
-            self.sock.sendto(util.make_packet("data", 0, error_message).encode(), addr)
+            packet_to_send = util.make_packet("data", 0, error_message)
+            print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
+            self.sock.sendto(packet_to_send.encode(), addr)
             # print disonnect message to server
             print("disconnected: username not available")
         else:
@@ -132,8 +163,9 @@ class Server:
         user_list = ', '.join(sorted(self.clients.values()))
         # send the list of users to the client
         response_msg = util.make_message("RESPONSE_USERS_LIST", 3, user_list)
-        response_packet = util.make_packet("data", 0, response_msg).encode()
-        self.sock.sendto(response_packet, addr)
+        response_packet = util.make_packet("data", 0, response_msg)
+        print(f"LOG: Gönderiliyor {addr}: {response_packet}")
+        self.sock.sendto(response_packet.encode(), addr)
         # print the request_users_list message to the server
         print(f"request_users_list: {username}")
 
@@ -150,10 +182,12 @@ class Server:
                 recipient_address = [addr for addr, username in self.clients.items() if username == user]
                 # send the message to the recipient
                 for rec_addr in recipient_address:
-                    self.sock.sendto(util.make_packet("data", 0, message).encode(), rec_addr)
+                    packet_to_send = util.make_packet("data", 0, message)
+                    print(f"LOG: Gönderiliyor {rec_addr}: {packet_to_send}")
+                    self.sock.sendto(packet_to_send.encode(), rec_addr)
             else:
                 # print the error message to the server
-                print(f"msg: {sender} to non-existent user {user}")
+                print(f"LOG: msj: {sender} -> var olmayan kullanıcı {user}")
 
     
     def err_unknown_message(self, addr):
@@ -161,7 +195,9 @@ class Server:
         This method is used to handle errors
         '''
         error_message = util.make_message("ERR_UNKNOWN_MESSAGE", 2)
-        self.sock.sendto(util.make_packet("data", 0, error_message).encode(), addr)
+        packet_to_send = util.make_packet("data", 0, error_message)
+        print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
+        self.sock.sendto(packet_to_send.encode(), addr)
         if addr in self.clients:
             # delete the client from the clients dictionary
             del self.clients[addr]
@@ -169,7 +205,6 @@ class Server:
             print("disconnected: server received an unknown message")
 
 
-# Do not change below part of code
 if __name__ == "__main__":
     def helper():
         '''
@@ -205,4 +240,3 @@ if __name__ == "__main__":
         SERVER.start()
     except (KeyboardInterrupt, SystemExit):
         exit()
-

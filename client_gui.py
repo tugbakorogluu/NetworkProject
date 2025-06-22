@@ -1,8 +1,7 @@
 import tkinter as tk
 from tkinter import scrolledtext, simpledialog, messagebox, font
 import threading
-import client_1
-import client_2
+import client
 import queue
 
 class ChatGUI:
@@ -77,23 +76,22 @@ class ChatGUI:
         self.root.title(f"Chat Uygulaması - {self.username}")
             
         self.server_addr = simpledialog.askstring("Sunucu Adresi", "Sunucu adresini girin:", initialvalue="localhost")
-        self.port = simpledialog.askinteger("Port", "Sunucu portunu girin:", initialvalue=5000)
-        self.server_choice = simpledialog.askinteger("Sunucu Seçimi", "Lütfen sunucu seçin:\n1: Basit Sunucu (UDP)\n2: Güvenilir Sunucu (UDP+ACK)", minvalue=1, maxvalue=2)
+        self.port = simpledialog.askinteger("Port", "Sunucu portunu girin:", initialvalue=15000)
         
         self.msg_queue = queue.Queue()
         self.user_list = []
-        if self.username and self.server_addr and self.port and self.server_choice:
+        if self.username and self.server_addr and self.port:
             self.connect_to_server()
             self.root.after(100, self.check_messages)
         else:
             self.root.destroy()
 
     def connect_to_server(self):
-        ClientClass = client_1.Client if self.server_choice == 1 else client_2.Client
+        ClientClass = client.Client
         self.client = ClientClass(self.username, self.server_addr, self.port, 3, on_message=self.display_message)
         
         threading.Thread(target=self.client.start, daemon=True).start()
-        self.display_message(f"Sunucu {self.server_choice}'e bağlanılıyor...", 'system')
+        self.display_message("Sunucuya bağlanılıyor...", 'system')
         self.root.after(500, self.refresh_users)
 
     def send_message(self, event=None):
