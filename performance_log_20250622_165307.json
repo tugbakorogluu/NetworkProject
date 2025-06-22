@@ -1,0 +1,50 @@
+[
+  {
+    "session_duration": 0.0006909370422363281,
+    "total_messages_sent": 0,
+    "total_messages_received": 0,
+    "total_bytes_sent": 0,
+    "total_bytes_received": 0,
+    "total_retransmissions": 0,
+    "messages_per_second": 0,
+    "bytes_per_second": 0.0,
+    "packet_loss_rate": 0,
+    "timestamp": "2025-06-22T16:53:07.272070"
+  },
+  {
+    "session_duration": 5.00199031829834,
+    "total_messages_sent": 2,
+    "total_messages_received": 3,
+    "total_bytes_sent": 67,
+    "total_bytes_received": 76,
+    "total_retransmissions": 0,
+    "avg_latency_ms": 13.657093048095703,
+    "min_latency_ms": 13.657093048095703,
+    "max_latency_ms": 13.657093048095703,
+    "latency_stddev_ms": 0,
+    "jitter_ms": 0,
+    "messages_per_second": 0,
+    "bytes_per_second": 13.394528249573035,
+    "packet_loss_rate": 0.0,
+    "avg_packet_size": 33.5,
+    "timestamp": "2025-06-22T16:53:12.273425"
+  },
+  {
+    "session_duration": 10.011189222335815,
+    "total_messages_sent": 2,
+    "total_messages_received": 3,
+    "total_bytes_sent": 67,
+    "total_bytes_received": 76,
+    "total_retransmissions": 0,
+    "avg_latency_ms": 13.657093048095703,
+    "min_latency_ms": 13.657093048095703,
+    "max_latency_ms": 13.657093048095703,
+    "latency_stddev_ms": 0,
+    "jitter_ms": 0,
+    "messages_per_second": 0,
+    "bytes_per_second": 6.692409117904301,
+    "packet_loss_rate": 0.0,
+    "avg_packet_size": 33.5,
+    "timestamp": "2025-06-22T16:53:17.282774"
+  }
+]

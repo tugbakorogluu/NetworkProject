@@ -38,7 +38,7 @@ class PerformanceMonitor:
         
         # Performans logları
         self.performance_log = []
-        self.log_file = f"performance_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        self.log_file = "performance_log.json"
         
         # Performans istatistikleri thread'i
         self.monitoring_active = True
@@ -55,7 +55,7 @@ class PerformanceMonitor:
             self.message_timestamps.append(timestamp)
             self.packet_sizes.append(message_size)
             self.pending_messages[seq_num] = timestamp
-            print(f"[PERF-LOG] SENT: seq_num={seq_num}, size={message_size}, total_sent={self.total_messages_sent}")
+            
 
     def record_message_received(self, seq_num, message_size, timestamp=None):
         """Alınan mesaj bilgilerini kaydet ve latency hesapla"""
@@ -64,7 +64,7 @@ class PerformanceMonitor:
         with self.lock:
             self.total_messages_received += 1
             self.total_bytes_received += message_size
-            print(f"[PERF-LOG] RECEIVED: seq_num={seq_num}, size={message_size}, total_received={self.total_messages_received}")
+           
             # Latency hesapla
             if seq_num in self.pending_messages:
                 sent_time = self.pending_messages[seq_num]
@@ -83,7 +83,7 @@ class PerformanceMonitor:
         with self.lock:
             current_time = time.time()
             session_duration = current_time - self.session_start_time
-            print(f"[PERF-LOG] get_current_stats: sent={self.total_messages_sent}, received={self.total_messages_received}, retransmissions={self.total_retransmissions}")
+            
             # Temel istatistikler
             stats = {
                 'session_duration': session_duration,
