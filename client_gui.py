@@ -4,23 +4,67 @@ import threading
 import client
 import queue
 
+# Özelleştirilmiş giriş penceresi
+class ThemedInputDialog:
+    def __init__(self, parent, title, prompt, initialvalue=None, is_int=False):
+        self.value = None
+        self.is_int = is_int
+        self.top = tk.Toplevel(parent)
+        self.top.title(title)
+        self.top.configure(bg="#2e2c2c")
+        self.top.grab_set()
+        self.top.resizable(False, False)
+        self.top.transient(parent)
+        self.top.geometry("300x120")
+        self.result = None
+
+        label = tk.Label(self.top, text=prompt, bg="#2e2c2c", fg="#FFFFFF", font=("Helvetica", 10))
+        label.pack(pady=(15, 5))
+
+        self.entry = tk.Entry(self.top, bg="#2e2c2c", fg="#FFFFFF", insertbackground="#FFFFFF", font=("Helvetica", 10))
+        self.entry.pack(pady=5, padx=20, fill=tk.X)
+        if initialvalue is not None:
+            self.entry.insert(0, str(initialvalue))
+        self.entry.focus_set()
+
+        button = tk.Button(self.top, text="Tamam", command=self.on_ok, bg="#FFB347", fg="#FFFFFF", activebackground="#FFB347", activeforeground="#FFFFFF", font=("Helvetica", 10, "bold"), relief=tk.FLAT)
+        button.pack(pady=(10, 10))
+
+        self.top.bind("<Return>", lambda event: self.on_ok())
+        self.top.protocol("WM_DELETE_WINDOW", self.on_close)
+        parent.wait_window(self.top)
+
+    def on_ok(self):
+        val = self.entry.get()
+        if self.is_int:
+            try:
+                val = int(val)
+            except ValueError:
+                val = None
+        self.result = val
+        self.top.destroy()
+
+    def on_close(self):
+        self.result = None
+        self.top.destroy()
+
 class ChatGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Chat Uygulaması")
-        self.root.configure(bg="#F0F0F0")
+        self.root.configure(bg="#808080")
 
         # Fonts and Colors
         self.default_font = font.nametofont("TkDefaultFont")
         self.default_font.configure(family="Helvetica", size=10)
         self.bold_font = font.Font(family="Helvetica", size=10, weight="bold")
         
-        BG_COLOR = "#F0F0F0"
-        TEXT_COLOR = "#000000"
-        ENTRY_BG = "#FFFFFF"
-        BUTTON_BG = "#0078D4"
-        BUTTON_FG = "#FFFFFF"
-        USER_LIST_BG = "#FFFFFF"
+        BG_COLOR = "#2e2c2c"  # Daha koyu gri arka plan
+        TEXT_COLOR = "#FFFFFF"  # Beyaz yazı
+        ENTRY_BG = "#2e2c2c"  # Daha koyu gri giriş alanı
+        BUTTON_BG = "#FFB347"  # Soft turuncu buton
+        BUTTON_FG = "#FFFFFF"  # Beyaz buton yazısı
+        USER_LIST_BG = "#2e2c2c"  # Daha koyu gri kullanıcı listesi
 
         # --- Layout ---
         self.root.grid_rowconfigure(0, weight=1)
@@ -30,53 +74,69 @@ class ChatGUI:
         left_frame = tk.Frame(self.root, bg=BG_COLOR, padx=10, pady=10)
         left_frame.grid(row=0, column=0, sticky="ns")
 
-        user_label = tk.Label(left_frame, text="Çevrimiçi Kullanıcılar", font=self.bold_font, bg=BG_COLOR)
+        user_label = tk.Label(left_frame, text="Çevrimiçi Kullanıcılar", font=self.bold_font, bg=BG_COLOR, fg=TEXT_COLOR)
         user_label.pack(pady=(0, 5))
 
-        self.user_listbox = tk.Listbox(left_frame, selectmode=tk.MULTIPLE, exportselection=False, bg=USER_LIST_BG, width=30, height=20)
+        self.user_listbox = tk.Listbox(left_frame, selectmode=tk.MULTIPLE, exportselection=False, bg=USER_LIST_BG, fg=TEXT_COLOR, width=30, height=20, highlightbackground=BG_COLOR, selectbackground=BUTTON_BG, selectforeground=BUTTON_FG)
         self.user_listbox.pack(fill=tk.BOTH, expand=True)
 
-        self.refresh_button = tk.Button(left_frame, text="Yenile", command=self.refresh_users, bg=BUTTON_BG, fg=BUTTON_FG, relief=tk.FLAT)
+        self.refresh_button = tk.Button(left_frame, text="Yenile", command=self.refresh_users, bg=BUTTON_BG, fg=BUTTON_FG, relief=tk.FLAT, activebackground=BUTTON_BG, activeforeground=BUTTON_FG)
         self.refresh_button.pack(pady=5, fill=tk.X)
 
         # Right Frame (Chat Area)
         right_frame = tk.Frame(self.root, bg=BG_COLOR)
-        right_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
         right_frame.grid_rowconfigure(0, weight=1)
         right_frame.grid_columnconfigure(0, weight=1)
 
-        self.text_area = scrolledtext.ScrolledText(right_frame, state='disabled', wrap=tk.WORD, bg=ENTRY_BG, font=("Helvetica", 10))
+        self.text_area = scrolledtext.ScrolledText(
+            right_frame,
+            state='disabled',
+            wrap=tk.WORD,
+            bg=ENTRY_BG,
+            fg=TEXT_COLOR,
+            font=("Helvetica", 10),
+            insertbackground=TEXT_COLOR,
+            highlightbackground=BG_COLOR,
+            highlightcolor=BG_COLOR,
+            borderwidth=2
+        )
         self.text_area.grid(row=0, column=0, columnspan=2, sticky="nsew")
+
+        # Scrollbar'ı koyu gri yap
+        for child in self.text_area.winfo_children():
+            if isinstance(child, tk.Scrollbar):
+                child.config(bg=BG_COLOR, troughcolor=BG_COLOR, activebackground=BG_COLOR, highlightbackground=BG_COLOR)
 
         # --- Message Entry ---
         entry_frame = tk.Frame(right_frame, bg=BG_COLOR)
-        entry_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        entry_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 0))
         entry_frame.grid_columnconfigure(0, weight=1)
 
-        self.entry = tk.Entry(entry_frame, bg=ENTRY_BG, font=("Helvetica", 10))
+        self.entry = tk.Entry(entry_frame, bg=ENTRY_BG, fg=TEXT_COLOR, font=("Helvetica", 10), insertbackground=TEXT_COLOR)
         self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         self.entry.bind("<Return>", self.send_message)
 
-        self.send_button = tk.Button(entry_frame, text="Gönder", command=self.send_message, bg=BUTTON_BG, fg=BUTTON_FG, relief=tk.FLAT)
+        self.send_button = tk.Button(entry_frame, text="Gönder", command=self.send_message, bg=BUTTON_BG, fg=BUTTON_FG, relief=tk.FLAT, activebackground=BUTTON_BG, activeforeground=BUTTON_FG)
         self.send_button.grid(row=0, column=1)
 
         # --- Tag Configurations for Text Area ---
-        self.text_area.tag_configure('me', foreground="#0078D4", font=self.bold_font)
-        self.text_area.tag_configure('other', foreground="#000000", font=self.bold_font)
-        self.text_area.tag_configure('message', foreground="#333333")
-        self.text_area.tag_configure('system', foreground="#666666", font=("Helvetica", 9, "italic"))
+        self.text_area.tag_configure('me', foreground=BUTTON_BG, font=self.bold_font)
+        self.text_area.tag_configure('other', foreground=TEXT_COLOR, font=self.bold_font)
+        self.text_area.tag_configure('message', foreground=TEXT_COLOR)
+        self.text_area.tag_configure('system', foreground=TEXT_COLOR, font=("Helvetica", 9, "italic"))
 
         # --- Initialization ---
         self.client = None
-        self.username = simpledialog.askstring("Kullanıcı Adı", "Kullanıcı adınızı girin:")
+        self.username = ThemedInputDialog(self.root, "Kullanıcı Adı", "Kullanıcı adınızı girin:").result
         if not self.username:
             self.root.destroy()
             return
 
         self.root.title(f"Chat Uygulaması - {self.username}")
             
-        self.server_addr = simpledialog.askstring("Sunucu Adresi", "Sunucu adresini girin:", initialvalue="localhost")
-        self.port = simpledialog.askinteger("Port", "Sunucu portunu girin:", initialvalue=15000)
+        self.server_addr = ThemedInputDialog(self.root, "Sunucu Adresi", "Sunucu adresini girin:", initialvalue="localhost").result
+        self.port = ThemedInputDialog(self.root, "Port", "Sunucu portunu girin:", initialvalue=15000, is_int=True).result
         
         self.msg_queue = queue.Queue()
         self.user_list = []
