@@ -1,5 +1,6 @@
 '''
 This module defines the behaviour of a client in the Chat Application
+Enhanced with Performance Monitoring
 '''
 import sys
 import getopt
@@ -9,6 +10,7 @@ from threading import Thread, Lock, Event
 import os
 import util
 import time
+from performance_monitor import performance_monitor
 
 # Constants for retransmission logic
 RETRY_TIMEOUT = 0.5  # 500ms
@@ -21,6 +23,9 @@ Available commands:
 |  msg <number_of_users> <username1> <username2> ... <message> - Send a message to users
 |  list - List All Active Users
 |  help - Display this help page
+|  perf - Show performance statistics
+|  perf_report - Show detailed performance report
+|  perf_reset - Reset performance statistics
 |  quit - Disconnect and quit the application
 """
 
@@ -48,6 +53,8 @@ Available commands:
         self.msg_buffer = 0
         self.msg_seq_nums =[]
 
+        # Performance monitoring
+        self.perf_monitor = performance_monitor
 
     def start(self):
         '''
@@ -68,19 +75,27 @@ Available commands:
                 command = input()
                 if command.lower() == 'quit':
                     # send disconnect message to server
-                    time.sleep(5)
+                    time.sleep(1)
                     self.quit()
                 elif command.startswith('msg'):
                     # send message to server
                     self.msg(command)
-
                 elif command.lower() == 'list':
                     # send request to server for list of users
                     self.list()
-
                 elif command.lower() == 'help':
                     # print help message
                     print(self.HELP_MESSAGE)
+                elif command.lower() == 'perf':
+                    # show current performance stats
+                    self.show_performance_stats()
+                elif command.lower() == 'perf_report':
+                    # show detailed performance report
+                    print(self.perf_monitor.get_performance_report())
+                elif command.lower() == 'perf_reset':
+                    # reset performance statistics
+                    self.perf_monitor.reset_stats()
+                    print("Performans istatistikleri sıfırlandı.")
                 else:
                     # print message for incorrect user input
                     print("incorrect userinput format")
@@ -88,9 +103,30 @@ Available commands:
                     # break the loop if the client is no longer active
                     break
         finally:
+            # stop performance monitoring
+            self.perf_monitor.stop_monitoring()
             # close the socket
             self.sock.close()
 
+    def show_performance_stats(self):
+        """Display current performance statistics"""
+        stats = self.perf_monitor.get_current_stats()
+        print(f"""
+=== PERFORMANS İSTATİSTİKLERİ ===
+Oturum süresi: {stats['session_duration']:.1f}s
+Gönderilen mesaj: {stats['total_messages_sent']}
+Alınan mesaj: {stats['total_messages_received']}
+Ortalama gecikme: {stats.get('avg_latency_ms', 0):.1f}ms
+Mesaj/saniye: {stats['messages_per_second']:.1f}
+Paket kaybı: {stats['packet_loss_rate']:.1f}%
+        """)
+        
+        # Optimizasyon önerileri
+        suggestions = self.perf_monitor.get_optimization_suggestions()
+        if suggestions:
+            print("\n=== OPTİMİZASYON ÖNERİLERİ ===")
+            for suggestion in suggestions:
+                print(suggestion)
 
     def error_handler(self, message):
         '''
@@ -113,7 +149,6 @@ Available commands:
             self.active = False
             self.sock.close()
 
-
     def receive_handler(self):
         '''
         Waits for a message from the server and processes it accordingly
@@ -121,8 +156,12 @@ Available commands:
         while self.active:
             try:
                 # receive data from the server
+                receive_time = time.time()
                 data, _ = self.sock.recvfrom(1024)  
                 packet_type, seq_num_str, message, _ = util.parse_packet(data.decode())
+
+                # Record received message for performance monitoring
+                self.perf_monitor.record_message_received(int(seq_num_str), len(data), receive_time)
 
                 if packet_type == 'ack':
                     ack_seq_num = int(seq_num_str)
@@ -164,13 +203,11 @@ Available commands:
             except Exception as e:
                 break
 
-
     def _show_message(self, message):
         if self.on_message:
             self.on_message(message)
         else:
             print(message)
-
 
     def _send_reliable_packet(self, packet):
         """Helper function to send a packet and add it to the pending list."""
@@ -178,8 +215,13 @@ Available commands:
             seq_num_str, _ = packet.split('|', 2)[1:3]
             seq_num = int(seq_num_str)
             self.pending_packets[seq_num] = (packet, time.time(), 0) # packet, sent_time, retry_count
+        
+        # Record sent message for performance monitoring
+        send_time = time.time()
+        packet_size = len(packet.encode())
+        self.perf_monitor.record_message_sent(seq_num, packet_size, send_time)
+        
         self.sock.sendto(packet.encode(), (self.server_addr, self.server_port))
-
 
     def join(self):
         '''
@@ -191,7 +233,6 @@ Available commands:
         self.seq_num += 1
         return
 
-
     def quit(self):
         '''
         Send a QUIT message to the server
@@ -202,7 +243,6 @@ Available commands:
         self.active = False
         print("quitting")
         return
-
 
     def msg(self, message):
         ''''
@@ -223,7 +263,6 @@ Available commands:
             print("incorrect userinput format")
             return
 
-    
     def list(self):
         '''
         Send a LIST message to the server
@@ -256,13 +295,16 @@ Available commands:
                         else:
                             # Retransmit
                             self._show_message(f"Timeout for packet {seq_num}. Retrying... ({retry_count + 1})")
+                            
+                            # Record retransmission for performance monitoring
+                            self.perf_monitor.record_retransmission(seq_num)
+                            
                             self.sock.sendto(packet.encode(), (self.server_addr, self.server_port))
                             # Update the packet's info in the dict
                             self.pending_packets[seq_num] = (packet, current_time, retry_count + 1)
             if not self.active:
                 self.sock.close()
                 break
-
 
 if __name__ == "__main__":
     def helper():
@@ -275,7 +317,6 @@ if __name__ == "__main__":
         print("-a ADDRESS | --address=ADDRESS The server ip or hostname, defaults to localhost")
         print("-w WINDOW_SIZE | --window=WINDOW_SIZE The window_size, defaults to 3")
         print("-h | --help Print this help")
-
 
     try:
         OPTS, ARGS = getopt.getopt(sys.argv[1:],

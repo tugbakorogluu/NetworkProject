@@ -1,0 +1,26 @@
+[
+  {
+    "session_duration": 0.00010180473327636719,
+    "total_messages_sent": 0,
+    "total_messages_received": 0,
+    "total_bytes_sent": 0,
+    "total_bytes_received": 0,
+    "total_retransmissions": 0,
+    "messages_per_second": 0,
+    "bytes_per_second": 0.0,
+    "packet_loss_rate": 0,
+    "timestamp": "2025-06-22T14:22:37.214160"
+  },
+  {
+    "session_duration": 5.005666017532349,
+    "total_messages_sent": 0,
+    "total_messages_received": 0,
+    "total_bytes_sent": 0,
+    "total_bytes_received": 0,
+    "total_retransmissions": 0,
+    "messages_per_second": 0,
+    "bytes_per_second": 0.0,
+    "packet_loss_rate": 0,
+    "timestamp": "2025-06-22T14:22:42.219828"
+  }
+]
