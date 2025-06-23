@@ -65,8 +65,9 @@ class ChatGUI(QWidget):
         self.port = self.ask_port()
         if not (self.server_addr and self.port):
             sys.exit(0)
-        self.groups = {}  # {group_id: {'name': str, 'members': [str]}}
+        self.groups = {}
         self.selected_group_id = None
+        self.active_chat_label = None
         self.init_ui()
         self.connect_to_server()
         self.timer = QTimer(self)
@@ -227,12 +228,16 @@ class ChatGUI(QWidget):
 
         # Sağ panel
         right_panel = QVBoxLayout()
-        right_panel.setSpacing(4)  # Dikey boşluk ekle
+        right_panel.setSpacing(4)
+        # Aktif sohbet etiketi
+        self.active_chat_label = QLabel()
+        self.active_chat_label.setStyleSheet("font-weight: bold; color: #FF8C00; font-size: 14px;")
+        right_panel.addWidget(self.active_chat_label)
         self.text_area = QTextEdit()
         self.text_area.setReadOnly(True)
         right_panel.addWidget(self.text_area, 5)
         entry_layout = QHBoxLayout()
-        entry_layout.setSpacing(4)  # Yatay boşluk ekle
+        entry_layout.setSpacing(4)
         self.entry = QLineEdit()
         self.entry.returnPressed.connect(self.send_message)
         entry_layout.addWidget(self.entry, 5)
@@ -243,6 +248,8 @@ class ChatGUI(QWidget):
         content_hlayout.addLayout(right_panel, 3)
         main_vlayout.addLayout(content_hlayout)
         self.setLayout(main_vlayout)
+        self.update_active_chat_label()
+        self.user_listbox.itemSelectionChanged.connect(self.user_listbox_selection_changed)
 
     def connect_to_server(self):
         ClientClass = client.Client
@@ -262,6 +269,9 @@ class ChatGUI(QWidget):
                 # Grup mesajı
                 try:
                     self.client.group_msg(f"group_msg {self.selected_group_id} {msg}")
+                    # Kendi mesajını arayüzde göster
+                    group_name = self.groups[self.selected_group_id]['name'] if self.selected_group_id in self.groups else self.selected_group_id
+                    self.text_area.append(f"<b style='color:#28A745;'>[Grup: {group_name}] Siz:</b> {msg}")
                 except Exception as e:
                     QMessageBox.critical(self, "Hata", f"Grup mesajı gönderilemedi: {str(e)}")
                 self.entry.clear()
@@ -298,9 +308,14 @@ class ChatGUI(QWidget):
             self.groups[group_id] = {'name': group_name, 'members': []}
             self.update_group_listbox()
             self.text_area.append(f"<b style='color:#FF8C00;'>[Grup Oluşturuldu]</b> {group_name} (ID: {group_id})")
+            self.update_active_chat_label()
             return
         if message.startswith("[Grup:"):
-            self.text_area.append(f"<span style='color:#0078D4;'><b>{message}</b></span>")
+            # Grup mesajı
+            if f"{self.username}:" in message or f"Siz:" in message:
+                self.text_area.append(f"<span style='color:#28A745;'><b>{message}</b></span>")
+            else:
+                self.text_area.append(f"<span style='color:#0078D4;'><b>{message}</b></span>")
             return
         if message.startswith("Dahil olduğunuz gruplar:"):
             # Grup listesi güncelle
@@ -312,6 +327,7 @@ class ChatGUI(QWidget):
                     self.groups[gid] = {'name': gname, 'members': []}
             self.update_group_listbox()
             self.text_area.append(f"<i>{message}</i>")
+            self.update_active_chat_label()
             return
         if tag_override == 'system':
             self.text_area.append(f"<i>{message}</i>")
@@ -332,7 +348,7 @@ class ChatGUI(QWidget):
                         context = " (Herkese)"
                     elif "(Özel)" in sender:
                         context = " (Özel)"
-                    self.text_area.append(f"<b style='color:#0078D4;'>Siz{context}:</b> {content}")
+                    self.text_area.append(f"<b style='color:#28A745;'>Siz{context}:</b> {content}")
                 else:
                     self.text_area.append(f"<b>{sender}:</b> {content}")
             except ValueError:
@@ -436,8 +452,14 @@ class ChatGUI(QWidget):
             text = selected[0].text()
             gid = text.split('(ID:')[1].strip(' )')
             self.selected_group_id = gid
+            # Grup seçiliyse kullanıcı listesi devre dışı
+            self.user_listbox.setEnabled(False)
+            self.create_group_button.setEnabled(False)
         else:
             self.selected_group_id = None
+            self.user_listbox.setEnabled(True)
+            self.create_group_button.setEnabled(True)
+        self.update_active_chat_label()
 
     def create_group_dialog(self):
         selected_items = self.user_listbox.selectedItems()
@@ -453,6 +475,22 @@ class ChatGUI(QWidget):
                 self.client.create_group(f"create_group {group_name} {' '.join(members)}")
             except Exception as e:
                 QMessageBox.critical(self, "Hata", f"Grup oluşturulamadı: {str(e)}")
+
+    def update_active_chat_label(self):
+        if self.selected_group_id:
+            group_name = self.groups[self.selected_group_id]['name'] if self.selected_group_id in self.groups else self.selected_group_id
+            self.active_chat_label.setText(f"Aktif Sohbet: [Grup] {group_name}")
+        else:
+            selected = self.user_listbox.selectedItems()
+            if selected:
+                users = ', '.join([item.text() for item in selected])
+                self.active_chat_label.setText(f"Aktif Sohbet: {users}")
+            else:
+                self.active_chat_label.setText("Aktif Sohbet: Herkese")
+
+    def user_listbox_selection_changed(self):
+        # Kullanıcı seçimi değiştiğinde aktif sohbet başlığını güncelle
+        self.update_active_chat_label()
 
     # --- Frameless window için resize desteği ---
     def mousePressEvent(self, event):
