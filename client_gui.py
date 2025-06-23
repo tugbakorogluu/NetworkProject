@@ -4,7 +4,8 @@ import queue
 import time
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QTextEdit, QLineEdit,
-    QMessageBox, QInputDialog, QTabWidget, QDialog, QFormLayout, QDialogButtonBox, QGroupBox, QScrollArea
+    QMessageBox, QInputDialog, QTabWidget, QDialog, QFormLayout, QDialogButtonBox, QGroupBox, QScrollArea,
+    QListWidgetItem
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, QPoint
 import client
@@ -248,6 +249,8 @@ class ChatGUI(QWidget):
         self.setLayout(main_vlayout)
 
         self.user_listbox.itemSelectionChanged.connect(self.user_listbox_selection_changed)
+        # Son konuşmalar listesinde çift tıklama ile sohbeti aç
+        self.chat_listbox.itemDoubleClicked.connect(self.on_chat_listbox_double_clicked)
 
     def connect_to_server(self):
         ClientClass = client.Client
@@ -310,6 +313,8 @@ class ChatGUI(QWidget):
                 chat_id = sender.strip()
                 text_area = self._get_or_create_chat_tab(chat_id, is_group=False)
                 text_area.append(f"<b>{sender}:</b> {content}")
+                # Son konuşmalar listesine ekle
+                self._add_to_chat_listbox(chat_id, is_group=False)
             except ValueError:
                 self._get_or_create_chat_tab("Sistem").append(f"Alınan mesaj formatı bozuk: {message}")
             return
@@ -322,6 +327,8 @@ class ChatGUI(QWidget):
                 chat_id = group_name
                 text_area = self._get_or_create_chat_tab(chat_id, is_group=True, group_name=group_name)
                 text_area.append(f"<span style='color:#0078D4;'><b>{message}</b></span>")
+                # Son konuşmalar listesine ekle
+                self._add_to_chat_listbox(chat_id, is_group=True, group_name=group_name)
             except Exception:
                 self._get_or_create_chat_tab("Sistem").append(f"Grup mesajı formatı bozuk: {message}")
             return
@@ -604,6 +611,8 @@ class ChatGUI(QWidget):
         for i in range(self.tab_widget.count()):
             if self.tab_widget.widget(i).objectName() == chat_id:
                 self.tab_widget.setCurrentIndex(i)
+                # Son konuşmalar listesinde en üste taşı
+                self._add_to_chat_listbox(chat_id, is_group, group_name)
                 return
         # Yeni sekme oluştur
         chat_widget = QWidget()
@@ -623,6 +632,8 @@ class ChatGUI(QWidget):
         self.tab_widget.setCurrentWidget(chat_widget)
         # Chat widget referanslarını kaydet
         self.chat_widgets[chat_id] = {'widget': chat_widget, 'text_area': text_area, 'entry': entry, 'is_group': is_group}
+        # Son konuşmalar listesine ekle
+        self._add_to_chat_listbox(chat_id, is_group, group_name)
         # Gönder butonunu ve entry'yi bağla
         def send_message_from_tab():
             msg = entry.text().strip()
@@ -660,6 +671,37 @@ class ChatGUI(QWidget):
     def on_tab_changed(self, index):
         # Sekme değiştiğinde okunmamış uyarılarını kaldır vs.
         pass
+
+    # Son konuşmalar listesine sohbet ekle ve en üste taşı
+    def _add_to_chat_listbox(self, chat_id, is_group=False, group_name=None):
+        # chat_id: kullanıcı adı veya grup adı
+        # Eğer zaten varsa, en üste taşı
+        display_name = group_name if is_group and group_name else chat_id
+        # Aynı chat_id ile var mı kontrol et
+        for i in range(self.chat_listbox.count()):
+            item = self.chat_listbox.item(i)
+            if item.data(Qt.UserRole) == chat_id:
+                self.chat_listbox.takeItem(i)
+                break
+        # En üste ekle
+        new_item = QListWidgetItem(display_name)
+        new_item.setData(Qt.UserRole, chat_id)
+        if is_group:
+            new_item.setText(f"[Grup] {display_name}")
+        self.chat_listbox.insertItem(0, new_item)
+
+    # Son konuşmalar listesinde çift tıklama ile sekme aç
+    def on_chat_listbox_double_clicked(self, item):
+        chat_id = item.data(Qt.UserRole)
+        display_name = item.text().replace("[Grup] ", "")
+        is_group = item.text().startswith("[Grup]")
+        # Sekme zaten açık mı kontrol et
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.widget(i).objectName() == chat_id:
+                self.tab_widget.setCurrentIndex(i)
+                return
+        # Açık değilse yeni sekme aç
+        self.open_chat_tab(chat_id, is_group=is_group, group_name=display_name if is_group else None)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
