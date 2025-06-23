@@ -2888,5 +2888,37 @@
     "retransmission_rate": 0.0,
     "avg_packet_size": 33.5,
     "timestamp": "2025-06-23T13:05:51.277608"
+  },
+  {
+    "session_duration": 0.00031185150146484375,
+    "total_messages_sent": 0,
+    "total_messages_received": 0,
+    "total_bytes_sent": 0,
+    "total_bytes_received": 0,
+    "total_retransmissions": 0,
+    "messages_per_second": 0,
+    "bytes_per_second": 0.0,
+    "packet_loss_rate": 0,
+    "retransmission_rate": 0,
+    "timestamp": "2025-06-23T13:26:31.965033"
+  },
+  {
+    "session_duration": 5.020404815673828,
+    "total_messages_sent": 2,
+    "total_messages_received": 2,
+    "total_bytes_sent": 67,
+    "total_bytes_received": 32,
+    "total_retransmissions": 0,
+    "avg_latency_ms": 18.085718154907227,
+    "min_latency_ms": 1.2352466583251953,
+    "max_latency_ms": 34.93618965148926,
+    "latency_stddev_ms": 23.830165322847574,
+    "jitter_ms": 33.70094299316406,
+    "messages_per_second": 0,
+    "bytes_per_second": 13.345242019853194,
+    "packet_loss_rate": 0.0,
+    "retransmission_rate": 0.0,
+    "avg_packet_size": 33.5,
+    "timestamp": "2025-06-23T13:26:36.985239"
   }
 ]
