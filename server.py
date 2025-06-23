@@ -223,7 +223,16 @@ class Server:
                 for rec_addr in recipient_address:
                     print(f"LOG: '{sender}' kullanıcısından '{user}' kullanıcısına mesaj gönderiliyor.")
                     packet_to_send = util.make_packet("data", 0, message)
-                    self.sock.sendto(packet_to_send.encode(), rec_addr)
+                    try:
+                        self.sock.sendto(packet_to_send.encode(), rec_addr)
+                    except socket.error as e:
+                        print(f"LOG: Mesaj gönderilirken hata oluştu: {e}. Alıcı: {user}, adres: {rec_addr}")
+                        # Client possibly disconnected, clean up
+                        if rec_addr in self.clients:
+                            del self.clients[rec_addr]
+                            if rec_addr in self.client_info:
+                                del self.client_info[rec_addr]
+                            print(f"LOG: Bağlantı hatası nedeniyle '{user}' kullanıcısı silindi.")
             else:
                 print(f"LOG: '{sender}' kullanıcısı, var olmayan '{user}' kullanıcısına mesaj göndermeye çalıştı.")
 
