@@ -28,6 +28,7 @@ class Server:
         Main loop.
         continue receiving messages from Clients and processing it
         '''
+        print(f"LOG: Sunucu {self.server_addr}:{self.server_port} adresinde dinleniyor...")
         try:
             while True:
                 data, addr = self.sock.recvfrom(1024)
@@ -182,23 +183,21 @@ class Server:
             # send error message to the client
             error_message = util.make_message("ERR_SERVER_FULL", 2)
             packet_to_send = util.make_packet("data", 0, error_message)
-            print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
+            print(f"LOG: {addr} adresinden '{username}' sunucuya katılmaya çalıştı fakat sunucu dolu.")
             self.sock.sendto(packet_to_send.encode(), addr)
-            # print disonnect message to server
-            print("disconnected: server full")
+            print("LOG: Bağlantı reddedildi: Sunucu dolu.")
         elif username in self.clients.values():
             # send error message to the client if username is already taken
             error_message = util.make_message("ERR_USERNAME_UNAVAILABLE", 2)
             packet_to_send = util.make_packet("data", 0, error_message)
-            print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
+            print(f"LOG: {addr} adresinden '{username}' sunucuya katılmaya çalıştı fakat kullanıcı adı kullanımda.")
             self.sock.sendto(packet_to_send.encode(), addr)
-            # print disonnect message to server
-            print("disconnected: username not available")
+            print("LOG: Bağlantı reddedildi: Kullanıcı adı kullanımda.")
         else:
             # add the client to the clients dictionary
             self.clients[addr] = username
-            # send successful join message to the client
-            print(f"join: {username}")
+            print(f"LOG: {addr} adresinden '{username}' sunucuya başarıyla katıldı.")
+            print(f"LOG: Şu anki aktif kullanıcılar: {', '.join(self.clients.values())}")
 
     
     def request_users_list(self, username, addr):
@@ -210,30 +209,23 @@ class Server:
         # send the list of users to the client
         response_msg = util.make_message("RESPONSE_USERS_LIST", 3, user_list)
         response_packet = util.make_packet("data", 0, response_msg)
-        print(f"LOG: Gönderiliyor {addr}: {response_packet}")
+        print(f"LOG: {addr} adresinden '{username}' kullanıcı listesi talep etti. Aktif kullanıcılar: {user_list}")
         self.sock.sendto(response_packet.encode(), addr)
-        # print the request_users_list message to the server
-        print(f"request_users_list: {username}")
 
     
     def send_message(self, sender, active_users, message):
         '''
         This method is used to send a message to active users
         '''
-        # send the message to the active users
         for user in active_users:
-            # check if the user is in the clients dictionary
             if user in self.clients.values():
-                # get the address of the recipient
                 recipient_address = [addr for addr, username in self.clients.items() if username == user]
-                # send the message to the recipient
                 for rec_addr in recipient_address:
+                    print(f"LOG: '{sender}' kullanıcısından '{user}' kullanıcısına mesaj gönderiliyor.")
                     packet_to_send = util.make_packet("data", 0, message)
-                    print(f"LOG: Gönderiliyor {rec_addr}: {packet_to_send}")
                     self.sock.sendto(packet_to_send.encode(), rec_addr)
             else:
-                # print the error message to the server
-                print(f"LOG: msj: {sender} -> var olmayan kullanıcı {user}")
+                print(f"LOG: '{sender}' kullanıcısı, var olmayan '{user}' kullanıcısına mesaj göndermeye çalıştı.")
 
     
     def err_unknown_message(self, addr):
@@ -242,13 +234,11 @@ class Server:
         '''
         error_message = util.make_message("ERR_UNKNOWN_MESSAGE", 2)
         packet_to_send = util.make_packet("data", 0, error_message)
-        print(f"LOG: Gönderiliyor {addr}: {packet_to_send}")
+        print(f"LOG: {addr} adresinden bilinmeyen bir mesaj alındı. Kullanıcı bağlantısı sonlandırılıyor.")
         self.sock.sendto(packet_to_send.encode(), addr)
         if addr in self.clients:
-            # delete the client from the clients dictionary
             del self.clients[addr]
-            # print the disconnect message to the server
-            print("disconnected: server received an unknown message")
+            print("LOG: Kullanıcı bağlantısı kesildi: Sunucu bilinmeyen bir mesaj aldı.")
 
 
 if __name__ == "__main__":
