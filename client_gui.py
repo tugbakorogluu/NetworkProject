@@ -65,6 +65,8 @@ class ChatGUI(QWidget):
         self.port = self.ask_port()
         if not (self.server_addr and self.port):
             sys.exit(0)
+        self.groups = {}  # {group_id: {'name': str, 'members': [str]}}
+        self.selected_group_id = None
         self.init_ui()
         self.connect_to_server()
         self.timer = QTimer(self)
@@ -179,6 +181,22 @@ class ChatGUI(QWidget):
         self.refresh_button = QPushButton("Yenile")
         self.refresh_button.clicked.connect(self.refresh_users)
         left_panel.addWidget(self.refresh_button)
+        # Grup oluşturma butonu
+        self.create_group_button = QPushButton("Grup Oluştur")
+        self.create_group_button.clicked.connect(self.create_group_dialog)
+        left_panel.addWidget(self.create_group_button)
+        left_panel.addSpacing(10)
+        # Grup listesi
+        group_label = QLabel("Gruplarınız")
+        group_label.setStyleSheet("font-weight: bold;")
+        left_panel.addWidget(group_label)
+        self.group_listbox = QListWidget()
+        self.group_listbox.setSelectionMode(QListWidget.SingleSelection)
+        self.group_listbox.itemSelectionChanged.connect(self.on_group_selected)
+        left_panel.addWidget(self.group_listbox)
+        self.refresh_groups_button = QPushButton("Grupları Yenile")
+        self.refresh_groups_button.clicked.connect(self.refresh_groups)
+        left_panel.addWidget(self.refresh_groups_button)
         left_panel.addSpacing(20)
 
         # Performans Monitörü
@@ -224,6 +242,7 @@ class ChatGUI(QWidget):
         right_panel.addLayout(entry_layout)
         content_hlayout.addLayout(right_panel, 3)
         main_vlayout.addLayout(content_hlayout)
+        self.setLayout(main_vlayout)
 
     def connect_to_server(self):
         ClientClass = client.Client
@@ -231,12 +250,21 @@ class ChatGUI(QWidget):
         threading.Thread(target=self.client.start, daemon=True).start()
         self.display_message("Sunucuya bağlanılıyor...", 'system')
         QTimer.singleShot(500, self.refresh_users)
+        QTimer.singleShot(1000, self.refresh_groups)
 
     def send_message(self):
         msg = self.entry.text()
         if msg:
             if not self.client or not hasattr(self.client, 'sock') or self.client.sock is None:
                 QMessageBox.warning(self, "Bağlantı Hatası", "Sunucuya bağlı değilsiniz veya bağlantı koptu.")
+                return
+            if self.selected_group_id:
+                # Grup mesajı
+                try:
+                    self.client.group_msg(f"group_msg {self.selected_group_id} {msg}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Hata", f"Grup mesajı gönderilemedi: {str(e)}")
+                self.entry.clear()
                 return
             selected_items = self.user_listbox.selectedItems()
             if not selected_items:
@@ -257,8 +285,34 @@ class ChatGUI(QWidget):
 
     def display_message(self, message, tag_override=None):
         self.signals.message_received.emit(message, tag_override if tag_override else "")
+        # Grup mesajı veya grup bildirimi ise güncelle
+        if message.startswith("Yeni grup oluşturuldu:") or message.startswith("[Grup:"):
+            self.refresh_groups()
 
     def _display_message_gui(self, message, tag_override):
+        if message.startswith("Yeni grup oluşturuldu:"):
+            # Grup bildirimi
+            parts = message.split()
+            group_id = parts[4].strip('()')
+            group_name = parts[3]
+            self.groups[group_id] = {'name': group_name, 'members': []}
+            self.update_group_listbox()
+            self.text_area.append(f"<b style='color:#FF8C00;'>[Grup Oluşturuldu]</b> {group_name} (ID: {group_id})")
+            return
+        if message.startswith("[Grup:"):
+            self.text_area.append(f"<span style='color:#0078D4;'><b>{message}</b></span>")
+            return
+        if message.startswith("Dahil olduğunuz gruplar:"):
+            # Grup listesi güncelle
+            group_list = message.split(':', 1)[1].strip().split(',')
+            self.groups = {}
+            for g in group_list:
+                if ':' in g:
+                    gid, gname = g.split(':', 1)
+                    self.groups[gid] = {'name': gname, 'members': []}
+            self.update_group_listbox()
+            self.text_area.append(f"<i>{message}</i>")
+            return
         if tag_override == 'system':
             self.text_area.append(f"<i>{message}</i>")
             return
@@ -362,6 +416,43 @@ class ChatGUI(QWidget):
                 QMessageBox.information(self, "Başarılı", "Performans istatistikleri başarıyla sıfırlandı.")
             except Exception as e:
                 QMessageBox.critical(self, "Hata", f"İstatistikler sıfırlanırken hata: {str(e)}")
+
+    def refresh_groups(self):
+        if not self.client:
+            return
+        try:
+            self.client.request_groups_list()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Grup listesi alınırken hata oluştu: {str(e)}")
+
+    def update_group_listbox(self):
+        self.group_listbox.clear()
+        for gid, ginfo in self.groups.items():
+            self.group_listbox.addItem(f"{ginfo['name']} (ID: {gid})")
+
+    def on_group_selected(self):
+        selected = self.group_listbox.selectedItems()
+        if selected:
+            text = selected[0].text()
+            gid = text.split('(ID:')[1].strip(' )')
+            self.selected_group_id = gid
+        else:
+            self.selected_group_id = None
+
+    def create_group_dialog(self):
+        selected_items = self.user_listbox.selectedItems()
+        if not selected_items or len(selected_items) < 2:
+            QMessageBox.warning(self, "Uyarı", "Grup oluşturmak için en az iki kullanıcı seçmelisiniz.")
+            return
+        group_name, ok = QInputDialog.getText(self, "Grup Adı", "Grup adını girin:")
+        if ok and group_name:
+            members = [item.text() for item in selected_items]
+            if self.username not in members:
+                members.append(self.username)
+            try:
+                self.client.create_group(f"create_group {group_name} {' '.join(members)}")
+            except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Grup oluşturulamadı: {str(e)}")
 
     # --- Frameless window için resize desteği ---
     def mousePressEvent(self, event):

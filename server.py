@@ -20,6 +20,8 @@ class Server:
         self.sock.bind((self.server_addr, self.server_port))
         self.clients = {}
         self.client_info = {}
+        self.groups = {}  # {group_id: {'name': str, 'members': [str]}}
+        self.group_id_counter = 1
 
     def start(self):
         '''
@@ -95,6 +97,50 @@ class Server:
                         except (IndexError, ValueError):
                             pass
 
+                    elif command == "create_group":
+                        # create_group <group_name> <user1> <user2> ...
+                        group_name = message_parts[2]
+                        members = message_parts[3:]
+                        group_id = str(self.group_id_counter)
+                        self.group_id_counter += 1
+                        self.groups[group_id] = {'name': group_name, 'members': members}
+                        # Her üyeye grup bilgisi gönder
+                        for user in members:
+                            for c_addr, uname in self.clients.items():
+                                if uname == user:
+                                    group_info_msg = util.make_message("GROUP_CREATED", 4, f"{group_id} {group_name} {' '.join(members)}")
+                                    packet = util.make_packet("data", 0, group_info_msg)
+                                    self.sock.sendto(packet.encode(), c_addr)
+                    elif command == "request_groups_list":
+                        # request_groups_list <username>
+                        username = message_parts[2]
+                        user_groups = []
+                        for gid, ginfo in self.groups.items():
+                            if username in ginfo['members']:
+                                user_groups.append(f"{gid}:{ginfo['name']}")
+                        group_list_msg = util.make_message("RESPONSE_GROUPS_LIST", 4, ' '.join(user_groups))
+                        packet = util.make_packet("data", 0, group_list_msg)
+                        self.sock.sendto(packet.encode(), addr)
+                    elif command == "group_msg":
+                        # group_msg <group_id> <sender> <mesaj>
+                        group_id = message_parts[2]
+                        sender = message_parts[3]
+                        text = ' '.join(message_parts[4:])
+                        if group_id in self.groups:
+                            members = self.groups[group_id]['members']
+                            for user in members:
+                                if user == sender:
+                                    continue
+                                for c_addr, uname in self.clients.items():
+                                    if uname == user:
+                                        group_msg = util.make_message('GROUP_MSG', 4, f"{group_id} {self.groups[group_id]['name']} {sender} {text}")
+                                        packet = util.make_packet("data", 0, group_msg)
+                                        self.sock.sendto(packet.encode(), c_addr)
+                        else:
+                            # Grup yoksa hata mesajı
+                            err_msg = util.make_message('ERR_GROUP_NOT_FOUND', 2)
+                            packet = util.make_packet("data", 0, err_msg)
+                            self.sock.sendto(packet.encode(), addr)
                     elif command == "disconnect":
                         try:
                             username = message_parts[2]

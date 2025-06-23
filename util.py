@@ -66,3 +66,15 @@ def make_message(msg_type, msg_format, message=None):
         msg_len = len(message)
         return "%s %d %s" % (msg_type, msg_len, message)
     return ""
+
+
+def make_group_message(msg_type, group_id, group_name, sender, message):
+    # msg_type: 'GROUP_MSG', group_id: str, group_name: str, sender: str, message: str
+    return f"{msg_type} {group_id} {group_name} {sender} {message}"
+
+def parse_group_message(message):
+    # 'GROUP_MSG <group_id> <group_name> <sender> <mesaj>'
+    parts = message.split(' ', 4)
+    if len(parts) < 5:
+        return None, None, None, None, None
+    return parts[0], parts[1], parts[2], parts[3], parts[4]

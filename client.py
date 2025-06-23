@@ -27,6 +27,9 @@ Available commands:
 |  perf_report - Show detailed performance report
 |  perf_reset - Reset performance statistics
 |  quit - Disconnect and quit the application
+|  create_group <group_name> <user1> <user2> ... - Create a new group
+|  group_msg <group_id> <message> - Send a message to a group
+|  groups - Request a list of groups you are part of
 """
 
     def __init__(self, username, dest, port, window_size, on_message=None):
@@ -52,6 +55,7 @@ Available commands:
         self.msg_start = 0
         self.msg_buffer = 0
         self.msg_seq_nums =[]
+        self.groups = {}  # {group_id: {'name': str, 'members': [str]}}
 
         # Performance monitoring
         self.perf_monitor = performance_monitor
@@ -96,6 +100,14 @@ Available commands:
                     # reset performance statistics
                     self.perf_monitor.reset_stats()
                     print("Performans istatistikleri sıfırlandı.")
+                elif command.startswith('create_group'):
+                    # create_group <group_name> <user1> <user2> ...
+                    self.create_group(command)
+                elif command.startswith('group_msg'):
+                    # group_msg <group_id> <mesaj>
+                    self.group_msg(command)
+                elif command.lower() == 'groups':
+                    self.request_groups_list()
                 else:
                     # print message for incorrect user input
                     print("incorrect userinput format")
@@ -187,6 +199,27 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
                         users = ' '.join(message_parts[2:])
                         # print the list of users
                         self._show_message(f"list: {users.replace(', ', ' ')}")
+                elif message.startswith("GROUP_CREATED"):
+                    # Sunucudan grup oluşturma bildirimi
+                    parts = message.split()
+                    group_id = parts[2]
+                    group_name = parts[3]
+                    members = parts[4:]
+                    self.groups[group_id] = {'name': group_name, 'members': members}
+                    self._show_message(f"Yeni grup oluşturuldu: {group_name} (ID: {group_id})")
+                elif message.startswith("RESPONSE_GROUPS_LIST"):
+                    # Sunucudan grup listesi
+                    group_infos = message.split(' ', 2)[2] if len(message.split(' ', 2)) > 2 else ''
+                    group_list = group_infos.split()
+                    self._show_message(f"Dahil olduğunuz gruplar: {', '.join(group_list)}")
+                elif message.startswith("GROUP_MSG"):
+                    # Sunucudan gelen grup mesajı
+                    parts = message.split(' ', 4)
+                    group_id = parts[2]
+                    group_name = parts[3]
+                    sender = parts[4].split(' ', 1)[0]
+                    text = parts[4][len(sender)+1:]
+                    self._show_message(f"[Grup: {group_name}] {sender}: {text}")
                 else:
                     # split the message into parts
                     message_parts = message.split(' ', 2)
@@ -304,6 +337,41 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
             if not self.active:
                 self.sock.close()
                 break
+
+    def create_group(self, command):
+        # create_group <group_name> <user1> <user2> ...
+        try:
+            parts = command.split()
+            group_name = parts[1]
+            members = parts[2:]
+            if self.name not in members:
+                members.append(self.name)
+            msg = util.make_message('create_group', 4, f"{group_name} {' '.join(members)}")
+            packet = util.make_packet('data', self.seq_num, msg)
+            self._send_reliable_packet(packet)
+            self.seq_num += 1
+        except Exception as e:
+            print(f"Grup oluşturulamadı: {e}")
+
+    def request_groups_list(self):
+        # request_groups_list <username>
+        msg = util.make_message('request_groups_list', 4, self.name)
+        packet = util.make_packet('data', self.seq_num, msg)
+        self._send_reliable_packet(packet)
+        self.seq_num += 1
+
+    def group_msg(self, command):
+        # group_msg <group_id> <mesaj>
+        try:
+            parts = command.split(' ', 2)
+            group_id = parts[1]
+            text = parts[2]
+            msg = util.make_message('group_msg', 4, f"{group_id} {self.name} {text}")
+            packet = util.make_packet('data', self.seq_num, msg)
+            self._send_reliable_packet(packet)
+            self.seq_num += 1
+        except Exception as e:
+            print(f"Grup mesajı gönderilemedi: {e}")
 
 if __name__ == "__main__":
     def helper():
