@@ -54,8 +54,8 @@ class PerformanceMonitor:
             self.total_bytes_sent += message_size
             self.message_timestamps.append(timestamp)
             self.packet_sizes.append(message_size)
+            # Gönderim zamanını kaydet
             self.pending_messages[seq_num] = timestamp
-            
 
     def record_message_received(self, seq_num, message_size, timestamp=None):
         """Alınan mesaj bilgilerini kaydet ve latency hesapla"""
@@ -65,10 +65,11 @@ class PerformanceMonitor:
             self.total_messages_received += 1
             self.total_bytes_received += message_size
            
-            # Latency hesapla
+            # Latency hesapla - sadece gönderilmiş mesajlar için
             if seq_num in self.pending_messages:
                 sent_time = self.pending_messages[seq_num]
-                latency = (timestamp - sent_time) * 1000  # milisaniye
+                # Alınma zamanından gönderilme zamanını çıkar
+                latency = max(0, (timestamp - sent_time) * 1000)  # milisaniye, negatif olamaz
                 self.latencies.append(latency)
                 del self.pending_messages[seq_num]
 
