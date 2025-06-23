@@ -68,6 +68,7 @@ class ChatGUI(QWidget):
         self.groups = {}
         self.selected_group_id = None
         self.active_chat_label = None
+        self.chat_widgets = {}  # chat_id: {'widget': QWidget, 'text_area': QTextEdit, 'entry': QLineEdit}
         self.init_ui()
         self.connect_to_server()
         self.timer = QTimer(self)
@@ -144,12 +145,11 @@ class ChatGUI(QWidget):
             }
         """)
 
-        # Ana layout: önce başlık barı, sonra içerik
         main_vlayout = QVBoxLayout(self)
         main_vlayout.setContentsMargins(8, 8, 8, 8)
         main_vlayout.setSpacing(4)
 
-        # Custom title bar (tüm pencere üstünde)
+        # Custom title bar
         self.title_bar = QWidget()
         self.title_bar.setFixedHeight(36)
         self.title_bar.setStyleSheet("background-color: #2F2F2F; border-top-left-radius: 8px; border-top-right-radius: 8px;")
@@ -166,14 +166,30 @@ class ChatGUI(QWidget):
         title_layout.addWidget(close_btn)
         main_vlayout.addWidget(self.title_bar)
 
-        # Alt içerik (eski main_layout)
+        # Alt içerik (yeni ana layout)
         content_hlayout = QHBoxLayout()
-        content_hlayout.setSpacing(8)  # Yatay boşluk ekle
+        content_hlayout.setSpacing(8)
 
-        # Sol panel
+        # Sol panel (chat list + kullanıcılar + gruplar)
         left_panel = QVBoxLayout()
-        left_panel.setSpacing(4)  # Dikey boşluk ekle
-        user_label = QLabel("Çevrimiçi Kullanıcılar")
+        left_panel.setSpacing(4)
+        # Son Konuşmalar
+        chatlist_label = QLabel("Son Konuşmalar")
+        chatlist_label.setStyleSheet("font-weight: bold;")
+        left_panel.addWidget(chatlist_label)
+        self.chat_listbox = QListWidget()
+        self.chat_listbox.setSelectionMode(QListWidget.SingleSelection)
+        left_panel.addWidget(self.chat_listbox)
+        self.new_chat_button = QPushButton("Yeni Mesaj")
+        self.new_chat_button.clicked.connect(self.new_chat_dialog)
+        left_panel.addWidget(self.new_chat_button)
+        # Grup oluşturma butonu
+        self.create_group_button = QPushButton("Yeni Grup")
+        self.create_group_button.clicked.connect(self.create_group_dialog)
+        left_panel.addWidget(self.create_group_button)
+        left_panel.addSpacing(10)
+        # Kullanıcılar
+        user_label = QLabel("Kullanıcılar")
         user_label.setStyleSheet("font-weight: bold;")
         left_panel.addWidget(user_label)
         self.user_listbox = QListWidget()
@@ -182,29 +198,24 @@ class ChatGUI(QWidget):
         self.refresh_button = QPushButton("Yenile")
         self.refresh_button.clicked.connect(self.refresh_users)
         left_panel.addWidget(self.refresh_button)
-        # Grup oluşturma butonu
-        self.create_group_button = QPushButton("Grup Oluştur")
-        self.create_group_button.clicked.connect(self.create_group_dialog)
-        left_panel.addWidget(self.create_group_button)
         left_panel.addSpacing(10)
-        # Grup listesi
-        group_label = QLabel("Gruplarınız")
+        # Gruplar
+        group_label = QLabel("Gruplar")
         group_label.setStyleSheet("font-weight: bold;")
         left_panel.addWidget(group_label)
         self.group_listbox = QListWidget()
         self.group_listbox.setSelectionMode(QListWidget.SingleSelection)
-        self.group_listbox.itemSelectionChanged.connect(self.on_group_selected)
+        self.group_listbox.itemClicked.connect(self.on_group_selected)
         left_panel.addWidget(self.group_listbox)
         self.refresh_groups_button = QPushButton("Grupları Yenile")
         self.refresh_groups_button.clicked.connect(self.refresh_groups)
         left_panel.addWidget(self.refresh_groups_button)
         left_panel.addSpacing(20)
-
-        # Performans Monitörü
+        # Performans Monitörü (eski koddan alınacak)
         perf_group = QGroupBox("Performans Monitörü")
         perf_layout = QFormLayout(perf_group)
-        perf_layout.setSpacing(4)  # Form layout boşluğu
-        perf_layout.setContentsMargins(8, 8, 8, 8)  # İç kenar boşlukları
+        perf_layout.setSpacing(4)
+        perf_layout.setContentsMargins(8, 8, 8, 8)
         self.perf_labels = {}
         perf_stats = [
             ("Mesaj/sn:", "msg_per_sec", "0.0"),
@@ -226,29 +237,16 @@ class ChatGUI(QWidget):
         left_panel.addStretch(1)
         content_hlayout.addLayout(left_panel, 1)
 
-        # Sağ panel
-        right_panel = QVBoxLayout()
-        right_panel.setSpacing(4)
-        # Aktif sohbet etiketi
-        self.active_chat_label = QLabel()
-        self.active_chat_label.setStyleSheet("font-weight: bold; color: #FF8C00; font-size: 14px;")
-        right_panel.addWidget(self.active_chat_label)
-        self.text_area = QTextEdit()
-        self.text_area.setReadOnly(True)
-        right_panel.addWidget(self.text_area, 5)
-        entry_layout = QHBoxLayout()
-        entry_layout.setSpacing(4)
-        self.entry = QLineEdit()
-        self.entry.returnPressed.connect(self.send_message)
-        entry_layout.addWidget(self.entry, 5)
-        self.send_button = QPushButton("Gönder")
-        self.send_button.clicked.connect(self.send_message)
-        entry_layout.addWidget(self.send_button)
-        right_panel.addLayout(entry_layout)
-        content_hlayout.addLayout(right_panel, 3)
+        # Orta panel: Sekmeli sohbet alanı
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.tabCloseRequested.connect(self.close_chat_tab)
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+        content_hlayout.addWidget(self.tab_widget, 3)
+
         main_vlayout.addLayout(content_hlayout)
         self.setLayout(main_vlayout)
-        self.update_active_chat_label()
+
         self.user_listbox.itemSelectionChanged.connect(self.user_listbox_selection_changed)
 
     def connect_to_server(self):
@@ -300,24 +298,49 @@ class ChatGUI(QWidget):
             self.refresh_groups()
 
     def _display_message_gui(self, message, tag_override):
-        if message.startswith("Yeni grup oluşturuldu:"):
-            # Grup bildirimi
-            parts = message.split()
-            group_id = parts[4].strip('()')
-            group_name = parts[3]
-            self.groups[group_id] = {'name': group_name, 'members': []}
-            self.update_group_listbox()
-            self.text_area.append(f"<b style='color:#FF8C00;'>[Grup Oluşturuldu]</b> {group_name} (ID: {group_id})")
-            self.update_active_chat_label()
+        # Mesajı ilgili sekmeye yönlendir
+        # Özel mesaj: msg:username:mesaj
+        if message.startswith("msg:"):
+            try:
+                _, sender, content = message.split(':', 2)
+                # Eğer mesajı ben gönderdiysem, chat_id karşı taraf olmalı
+                if sender == self.username:
+                    # Kendi gönderdiğim mesajı, aktif sekmeye ekle (zaten ekleniyor)
+                    return
+                chat_id = sender.strip()
+                text_area = self._get_or_create_chat_tab(chat_id, is_group=False)
+                text_area.append(f"<b>{sender}:</b> {content}")
+            except ValueError:
+                self._get_or_create_chat_tab("Sistem").append(f"Alınan mesaj formatı bozuk: {message}")
             return
+        # Grup mesajı
         if message.startswith("[Grup:"):
-            # Grup mesajı
-            if f"{self.username}:" in message or f"Siz:" in message:
-                self.text_area.append(f"<span style='color:#28A745;'><b>{message}</b></span>")
-            else:
-                self.text_area.append(f"<span style='color:#0078D4;'><b>{message}</b></span>")
+            try:
+                # [Grup: GrupAdı] Kullanıcı: mesaj
+                group_info = message.split(']')[0][7:]  # Grup adı
+                group_name = group_info.strip()
+                chat_id = group_name
+                text_area = self._get_or_create_chat_tab(chat_id, is_group=True, group_name=group_name)
+                text_area.append(f"<span style='color:#0078D4;'><b>{message}</b></span>")
+            except Exception:
+                self._get_or_create_chat_tab("Sistem").append(f"Grup mesajı formatı bozuk: {message}")
             return
-        if message.startswith("Dahil olduğunuz gruplar:"):
+        # Sistem ve diğer mesajlar
+        if tag_override == 'system':
+            text_area = self._get_or_create_chat_tab("Sistem")
+            text_area.append(f"<i>{message}</i>")
+            return
+        if tag_override == 'performance':
+            text_area = self._get_or_create_chat_tab("Performans")
+            text_area.append(f"<span style='color:green;'><b>{message}</b></span>")
+            return
+        if message.startswith("list: "):
+            users = message[6:].strip().split()
+            self.user_list = sorted([u for u in users if u != self.username])
+            self.update_user_listbox()
+            text_area = self._get_or_create_chat_tab("Sistem")
+            text_area.append(f"<i>{message}</i>")
+        elif message.startswith("Dahil olduğunuz gruplar:"):
             # Grup listesi güncelle
             group_list = message.split(':', 1)[1].strip().split(',')
             self.groups = {}
@@ -326,35 +349,12 @@ class ChatGUI(QWidget):
                     gid, gname = g.split(':', 1)
                     self.groups[gid] = {'name': gname, 'members': []}
             self.update_group_listbox()
-            self.text_area.append(f"<i>{message}</i>")
-            self.update_active_chat_label()
+            text_area = self._get_or_create_chat_tab("Sistem")
+            text_area.append(f"<i>{message}</i>")
             return
-        if tag_override == 'system':
-            self.text_area.append(f"<i>{message}</i>")
-            return
-        if tag_override == 'performance':
-            self.text_area.append(f"<span style='color:green;'><b>{message}</b></span>")
-            return
-        if message.startswith("list: "):
-            users = message[6:].strip().split()
-            self.user_list = sorted([u for u in users if u != self.username])
-            self.update_user_listbox()
-        elif message.startswith("msg:"):
-            try:
-                _, sender, content = message.split(':', 2)
-                if sender.startswith(self.username):
-                    context = ""
-                    if "(Herkese)" in sender:
-                        context = " (Herkese)"
-                    elif "(Özel)" in sender:
-                        context = " (Özel)"
-                    self.text_area.append(f"<b style='color:#28A745;'>Siz{context}:</b> {content}")
-                else:
-                    self.text_area.append(f"<b>{sender}:</b> {content}")
-            except ValueError:
-                self._display_message_gui(f"Alınan mesaj formatı bozuk: {message}", 'system')
         else:
-            self._display_message_gui(message, 'system')
+            text_area = self._get_or_create_chat_tab("Sistem")
+            text_area.append(f"<i>{message}</i>")
 
     def check_messages(self):
         while not self.msg_queue.empty():
@@ -446,20 +446,13 @@ class ChatGUI(QWidget):
         for gid, ginfo in self.groups.items():
             self.group_listbox.addItem(f"{ginfo['name']} (ID: {gid})")
 
-    def on_group_selected(self):
-        selected = self.group_listbox.selectedItems()
-        if selected:
-            text = selected[0].text()
+    def on_group_selected(self, item):
+        # Grup seçilince sekme aç
+        text = item.text()
+        if '(ID:' in text:
+            group_name = text.split(' (ID:')[0]
             gid = text.split('(ID:')[1].strip(' )')
-            self.selected_group_id = gid
-            # Grup seçiliyse kullanıcı listesi devre dışı
-            self.user_listbox.setEnabled(False)
-            self.create_group_button.setEnabled(False)
-        else:
-            self.selected_group_id = None
-            self.user_listbox.setEnabled(True)
-            self.create_group_button.setEnabled(True)
-        self.update_active_chat_label()
+            self.open_chat_tab(gid, is_group=True, group_name=group_name)
 
     def create_group_dialog(self):
         selected_items = self.user_listbox.selectedItems()
@@ -476,21 +469,9 @@ class ChatGUI(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Hata", f"Grup oluşturulamadı: {str(e)}")
 
-    def update_active_chat_label(self):
-        if self.selected_group_id:
-            group_name = self.groups[self.selected_group_id]['name'] if self.selected_group_id in self.groups else self.selected_group_id
-            self.active_chat_label.setText(f"Aktif Sohbet: [Grup] {group_name}")
-        else:
-            selected = self.user_listbox.selectedItems()
-            if selected:
-                users = ', '.join([item.text() for item in selected])
-                self.active_chat_label.setText(f"Aktif Sohbet: {users}")
-            else:
-                self.active_chat_label.setText("Aktif Sohbet: Herkese")
-
     def user_listbox_selection_changed(self):
-        # Kullanıcı seçimi değiştiğinde aktif sohbet başlığını güncelle
-        self.update_active_chat_label()
+        # Kullanıcı seçimi değiştiğinde yapılacak işlemler (gerekirse buraya eklenir)
+        pass
 
     # --- Frameless window için resize desteği ---
     def mousePressEvent(self, event):
@@ -606,6 +587,79 @@ class ChatGUI(QWidget):
         self._resize_dir = None
         self._resize_start_pos = None
         self._resize_start_geom = None
+
+    # Yeni Mesaj başlatma dialogu (kullanıcı seçimi)
+    def new_chat_dialog(self):
+        selected_items = self.user_listbox.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Uyarı", "Lütfen mesaj göndermek için bir kullanıcı seçin.")
+            return
+        user = selected_items[0].text()
+        self.open_chat_tab(user, is_group=False)
+
+    # Sekme açma fonksiyonu (kullanıcı veya grup için)
+    def open_chat_tab(self, chat_id, is_group=False, group_name=None):
+        # chat_id: kullanıcı adı veya grup id
+        # Eğer sekme zaten açıksa ona geç
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.widget(i).objectName() == chat_id:
+                self.tab_widget.setCurrentIndex(i)
+                return
+        # Yeni sekme oluştur
+        chat_widget = QWidget()
+        chat_widget.setObjectName(chat_id)
+        vlayout = QVBoxLayout(chat_widget)
+        text_area = QTextEdit()
+        text_area.setReadOnly(True)
+        vlayout.addWidget(text_area)
+        entry_layout = QHBoxLayout()
+        entry = QLineEdit()
+        send_btn = QPushButton("Gönder")
+        entry_layout.addWidget(entry)
+        entry_layout.addWidget(send_btn)
+        vlayout.addLayout(entry_layout)
+        tab_title = group_name if is_group and group_name else chat_id
+        self.tab_widget.addTab(chat_widget, tab_title)
+        self.tab_widget.setCurrentWidget(chat_widget)
+        # Chat widget referanslarını kaydet
+        self.chat_widgets[chat_id] = {'widget': chat_widget, 'text_area': text_area, 'entry': entry, 'is_group': is_group}
+        # Gönder butonunu ve entry'yi bağla
+        def send_message_from_tab():
+            msg = entry.text().strip()
+            if not msg:
+                return
+            if is_group:
+                # Grup mesajı gönder
+                try:
+                    self.client.group_msg(f"group_msg {chat_id} {msg}")
+                    text_area.append(f"<b style='color:#28A745;'>Siz:</b> {msg}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Hata", f"Grup mesajı gönderilemedi: {str(e)}")
+            else:
+                # Birebir mesaj gönder
+                try:
+                    user_count = 1
+                    user_str = chat_id
+                    full_msg = f"msg {user_count} {user_str} {msg}"
+                    self.client.msg(full_msg)
+                    text_area.append(f"<b style='color:#28A745;'>Siz:</b> {msg}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Hata", f"Mesaj gönderilemedi: {str(e)}")
+            entry.clear()
+        send_btn.clicked.connect(send_message_from_tab)
+        entry.returnPressed.connect(send_message_from_tab)
+
+    def _get_or_create_chat_tab(self, chat_id, is_group=False, group_name=None):
+        if chat_id not in self.chat_widgets:
+            self.open_chat_tab(chat_id, is_group, group_name)
+        return self.chat_widgets[chat_id]['text_area']
+
+    def close_chat_tab(self, index):
+        self.tab_widget.removeTab(index)
+
+    def on_tab_changed(self, index):
+        # Sekme değiştiğinde okunmamış uyarılarını kaldır vs.
+        pass
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
