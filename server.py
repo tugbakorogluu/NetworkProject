@@ -5,6 +5,7 @@ import sys
 import getopt
 import socket
 import util
+import time
 
 
 class Server:
@@ -22,6 +23,10 @@ class Server:
         self.client_info = {}
         self.groups = {}  # {group_id: {'name': str, 'members': [str]}}
         self.group_id_counter = 1
+        self.window_size = int(window)
+        self.send_buffers = {}  # addr: {seq_num: (packet, timestamp)}
+        self.last_acked = {}    # addr: last acked seq_num
+        self.last_sent = {}     # addr: last sent seq_num
 
     def start(self):
         '''
@@ -225,6 +230,7 @@ class Server:
                     packet_to_send = util.make_packet("data", 0, message)
                     try:
                         self.sock.sendto(packet_to_send.encode(), rec_addr)
+                        print(f"LOG: Mesaj {rec_addr} adresine (kullanıcı: {user}) başarıyla gönderildi.")
                     except socket.error as e:
                         print(f"LOG: Mesaj gönderilirken hata oluştu: {e}. Alıcı: {user}, adres: {rec_addr}")
                         # Client possibly disconnected, clean up
@@ -248,6 +254,32 @@ class Server:
         if addr in self.clients:
             del self.clients[addr]
             print("LOG: Kullanıcı bağlantısı kesildi: Sunucu bilinmeyen bir mesaj aldı.")
+
+    def send_with_window(self, addr, message):
+        if addr not in self.send_buffers:
+            self.send_buffers[addr] = {}
+            self.last_acked[addr] = -1
+            self.last_sent[addr] = -1
+
+        # Pencere doluysa yeni paket gönderme
+        if len(self.send_buffers[addr]) >= self.window_size:
+            return
+
+        seq_num = self.last_sent[addr] + 1
+        packet = util.make_packet("data", seq_num, message)
+        self.sock.sendto(packet.encode(), addr)
+        self.send_buffers[addr][seq_num] = (packet, time.time())
+        self.last_sent[addr] = seq_num
+
+    def resend_timeouts(self):
+        while True:
+            for addr, buffer in self.send_buffers.items():
+                for seq_num, (packet, timestamp) in list(buffer.items()):
+                    if time.time() - timestamp > 1.0:  # 1 saniye timeout örneği
+                        print(f"LOG: {addr} için {seq_num} numaralı paket tekrar gönderiliyor.")
+                        self.sock.sendto(packet.encode(), addr)
+                        self.send_buffers[addr][seq_num] = (packet, time.time())
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":
