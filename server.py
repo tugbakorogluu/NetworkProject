@@ -127,18 +127,31 @@ class Server:
                         group_id = message_parts[2]
                         sender = message_parts[3]
                         text = ' '.join(message_parts[4:])
+                        print(f"LOG: Grup mesajı alındı: grup_id='{group_id}', gönderen='{sender}', metin='{text}'")
                         if group_id in self.groups:
                             members = self.groups[group_id]['members']
+                            print(f"LOG: Grup '{self.groups[group_id]['name']}' (ID: {group_id}) bulundu. Üyeler: {members}")
+                            forwarded_count = 0
                             for user in members:
                                 if user == sender:
                                     continue
+                                
+                                found_recipient = False
                                 for c_addr, uname in self.clients.items():
                                     if uname == user:
+                                        found_recipient = True
                                         group_msg = util.make_message('GROUP_MSG', 4, f"{group_id} {self.groups[group_id]['name']} {sender} {text}")
                                         packet = util.make_packet("data", 0, group_msg)
+                                        print(f"LOG: Grup mesajı '{user}' kullanıcısına ({c_addr}) iletiliyor...")
                                         self.sock.sendto(packet.encode(), c_addr)
+                                        forwarded_count += 1
+                                
+                                if not found_recipient:
+                                    print(f"LOG: Grup üyesi '{user}' aktif istemciler arasında bulunamadı.")
+                            print(f"LOG: Grup mesajı {forwarded_count} üyeye iletildi.")
                         else:
                             # Grup yoksa hata mesajı
+                            print(f"LOG: Grup ID '{group_id}' bulunamadı. Aktif gruplar: {list(self.groups.keys())}")
                             err_msg = util.make_message('ERR_GROUP_NOT_FOUND', 2)
                             packet = util.make_packet("data", 0, err_msg)
                             self.sock.sendto(packet.encode(), addr)
