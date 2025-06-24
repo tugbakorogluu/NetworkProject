@@ -241,13 +241,15 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
         else:
             print(message)
 
-    def _send_reliable_packet(self, packet):
-        """Helper function to send a packet and add it to the pending list."""
+    def _send_reliable_packet(self, packet_type, message_text):
+        """Helper function to build a packet, send it, and add it to the pending list."""
+        # Lock to ensure seq_num is incremented atomically
         with self.pending_packets_lock:
-            seq_num_str, _ = packet.split('|', 2)[1:3]
-            seq_num = int(seq_num_str)
+            seq_num = self.seq_num
+            packet = util.make_packet(packet_type, seq_num, message_text)
             self.pending_packets[seq_num] = (packet, time.time(), 0) # packet, sent_time, retry_count
-        
+            self.seq_num += 1
+
         # Record sent message for performance monitoring
         send_time = time.time()
         packet_size = len(packet.encode())
@@ -260,9 +262,7 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
         Send a JOIN message to the server
         '''
         join_message = util.make_message("join", 1, self.name)
-        join_packet = util.make_packet("data", self.seq_num, join_message)
-        self._send_reliable_packet(join_packet)
-        self.seq_num += 1
+        self._send_reliable_packet("data", join_message)
         return
 
     def quit(self):
@@ -270,8 +270,7 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
         Send a QUIT message to the server
         '''
         disconnect_message = util.make_message("disconnect", 1, self.name)
-        disconnect_message_packet = util.make_packet("data", self.seq_num, disconnect_message)
-        self._send_reliable_packet(disconnect_message_packet)
+        self._send_reliable_packet("data", disconnect_message)
         self.active = False
         print("quitting")
         return
@@ -281,18 +280,26 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
         Send a message to the server
         '''
         try:
-            parts = message.split(' ', 1)
-            user_list, text = parts[1].split(' ', 1)
-            users = user_list.split(',')
-            num_users = len(users)
+            # command format: "msg <num_users> <user1> ... <message_body>"
+            parts = message.split(' ', 2)
+            if len(parts) < 3:
+                raise ValueError("Incorrect format")
+            
+            num_users_str = parts[1]
+            rest_of_message = parts[2]
+            
+            num_users = int(num_users_str)
+            
+            message_parts = rest_of_message.split(' ', num_users)
+            users = message_parts[:num_users]
+            text = message_parts[num_users]
+
             user_message_part = f"{num_users} " + " ".join(users) + " " + text
             user_msg_message = util.make_message('send_message', 4, user_message_part)
-            message_packet = util.make_packet("data", self.seq_num, user_msg_message)
-            self._send_reliable_packet(message_packet)
-            self.seq_num += 1
-            return
+            self._send_reliable_packet("data", user_msg_message)
+
         except (ValueError, IndexError):
-            print("incorrect userinput format")
+            print("incorrect userinput format. Use: msg <num_users> <user1>... <message>")
             return
 
     def list(self):
@@ -301,9 +308,7 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
         '''
         # send request to server for list of users
         list_message = util.make_message("request_users_list", 2)
-        list_message_packet = util.make_packet("data", self.seq_num, list_message)
-        self._send_reliable_packet(list_message_packet)
-        self.seq_num += 1
+        self._send_reliable_packet("data", list_message)
         return
 
     def retransmission_handler(self):
@@ -347,18 +352,14 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
             if self.name not in members:
                 members.append(self.name)
             msg = util.make_message('create_group', 4, f"{group_name} {' '.join(members)}")
-            packet = util.make_packet('data', self.seq_num, msg)
-            self._send_reliable_packet(packet)
-            self.seq_num += 1
+            self._send_reliable_packet('data', msg)
         except Exception as e:
             print(f"Grup oluşturulamadı: {e}")
 
     def request_groups_list(self):
         # request_groups_list <username>
         msg = util.make_message('request_groups_list', 4, self.name)
-        packet = util.make_packet('data', self.seq_num, msg)
-        self._send_reliable_packet(packet)
-        self.seq_num += 1
+        self._send_reliable_packet('data', msg)
 
     def group_msg(self, command):
         # group_msg <group_id> <mesaj>
@@ -367,9 +368,7 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
             group_id = parts[1]
             text = parts[2]
             msg = util.make_message('group_msg', 4, f"{group_id} {self.name} {text}")
-            packet = util.make_packet('data', self.seq_num, msg)
-            self._send_reliable_packet(packet)
-            self.seq_num += 1
+            self._send_reliable_packet('data', msg)
         except Exception as e:
             print(f"Grup mesajı gönderilemedi: {e}")
 
