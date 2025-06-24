@@ -53,6 +53,14 @@ class Server:
             print(f"LOG: Paket çözümlendi: tip={packet_type}, sıra_no={seq_num_str}, mesaj='{message}'")
             seq_num = int(seq_num_str)
 
+            # Performance test paketlerini sıra numarası kontrolünden önce işle
+            message_parts_for_test = message.split()
+            if message_parts_for_test and message_parts_for_test[0] == "perf_test":
+                ack_msg = util.make_message("perf_ack", 1, message_parts_for_test[2])
+                packet = util.make_packet("data", 0, ack_msg)
+                self.sock.sendto(packet.encode(), addr)
+                return # Diğer işlemleri atla
+
             # process the message
             if packet_type == "start":
                 self.client_info[addr] = seq_num

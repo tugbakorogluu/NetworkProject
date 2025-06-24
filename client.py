@@ -10,6 +10,7 @@ from threading import Thread, Lock, Event
 import os
 import util
 import time
+import numpy as np
 from performance_monitor import performance_monitor
 
 # Constants for retransmission logic
@@ -30,6 +31,7 @@ Available commands:
 |  create_group <group_name> <user1> <user2> ... - Create a new group
 |  group_msg <group_id> <message> - Send a message to a group
 |  groups - Request a list of groups you are part of
+|  rtt_test - Run a round-trip time performance test
 """
 
     def __init__(self, username, dest, port, window_size, on_message=None):
@@ -56,6 +58,12 @@ Available commands:
         self.msg_buffer = 0
         self.msg_seq_nums =[]
         self.groups = {}  # {group_id: {'name': str, 'members': [str]}}
+
+        # RTT test variables
+        self.rtt_test_active = False
+        self.rtt_response_received = Event()
+        self.rtt_start_time = 0
+        self.rtt_results = []
 
         # Performance monitoring
         self.perf_monitor = performance_monitor
@@ -108,6 +116,8 @@ Available commands:
                     self.group_msg(command)
                 elif command.lower() == 'groups':
                     self.request_groups_list()
+                elif command.lower() == 'rtt_test':
+                    self.run_rtt_test()
                 else:
                     # print message for incorrect user input
                     print("incorrect userinput format")
@@ -171,6 +181,12 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
                 receive_time = time.time()
                 data, _ = self.sock.recvfrom(1024)  
                 packet_type, seq_num_str, message, _ = util.parse_packet(data.decode())
+
+                if self.rtt_test_active and message.startswith("perf_ack"):
+                    rtt = (time.perf_counter() - self.rtt_start_time) * 1000  # ms
+                    self.rtt_results.append(rtt)
+                    self.rtt_response_received.set()
+                    continue
 
                 if packet_type == 'ack':
                     ack_seq_num = int(seq_num_str)
@@ -372,6 +388,47 @@ Paket kaybı: {stats['packet_loss_rate']:.1f}%
             self.seq_num += 1
         except Exception as e:
             print(f"Grup mesajı gönderilemedi: {e}")
+
+    def run_rtt_test(self, num_packets=100):
+        """Runs a round-trip time test to the server."""
+        print(f"RTT (Gidiş-Dönüş Süresi) testi başlatılıyor ({num_packets} paket)...")
+        
+        self.rtt_test_active = True
+        self.rtt_results.clear()
+        
+        for i in range(num_packets):
+            self.rtt_response_received.clear()
+            
+            msg = util.make_message("perf_test", 1, str(i))
+            packet = util.make_packet("data", self.seq_num, msg)
+            
+            self.rtt_start_time = time.perf_counter()
+            self.sock.sendto(packet.encode(), (self.server_addr, self.server_port))
+            
+            # Wait for the response from the receive_handler
+            received = self.rtt_response_received.wait(timeout=1.0) # 1 saniye timeout
+            if not received:
+                print(f"Paket {i} için yanıt zaman aşımına uğradı.")
+        
+        self.rtt_test_active = False
+        
+        if not self.rtt_results:
+            print("Test tamamlandı, ancak hiç yanıt alınamadı.")
+            return
+
+        # Calculate statistics
+        min_rtt = min(self.rtt_results)
+        max_rtt = max(self.rtt_results)
+        avg_rtt = np.mean(self.rtt_results)
+        std_dev_rtt = np.std(self.rtt_results)
+        
+        print("\n--- RTT Test Sonuçları ---")
+        print(f"Başarıyla alınan yanıt sayısı: {len(self.rtt_results)}/{num_packets}")
+        print(f"Minimum Gecikme : {min_rtt:.4f} ms")
+        print(f"Maksimum Gecikme: {max_rtt:.4f} ms")
+        print(f"Ortalama Gecikme: {avg_rtt:.4f} ms")
+        print(f"Standart Sapma  : {std_dev_rtt:.4f} ms")
+        print("--------------------------\n")
 
 if __name__ == "__main__":
     def helper():
